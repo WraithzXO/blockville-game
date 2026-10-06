@@ -13,6 +13,9 @@ import {
   DEFAULT_LOOK,
   HATS,
   STORE_ITEMS,
+  blocksForStake,
+  feeMultFor,
+  upgradeCost,
   plotAllowance,
   type BuildingType,
   type PlayerLook,
@@ -53,6 +56,7 @@ interface State {
   unlockedHats: string[];      // hat ids purchased from the Store
   storeOpen: boolean;
   customiseOpen: boolean;
+  selectedBuilding: number | null;   // plot id of a finished building being inspected
 }
 
 type Action =
@@ -61,6 +65,8 @@ type Action =
   | { t: 'stakeMore'; amount: number }
   | { t: 'claim'; plot: number; type: BuildingType }
   | { t: 'buildClick'; plot: number }
+  | { t: 'upgrade'; plot: number }
+  | { t: 'openBuilding'; plot: number | null }
   | { t: 'selectPlot'; plot: number | null }
   | { t: 'buyItem'; item: string }
   | { t: 'setLook'; look: PlayerLook }
@@ -80,7 +86,7 @@ const emptyPlots = (): Plot[] =>
 const initial: State = {
   mode: null,
   onboarded: false,
-  balance: 25000, // demo wallet balance so the 20K stake is testable
+  balance: 60_000, // demo faucet balance — enough to feel out stake scaling and multiple plots
   staked: 0,
   blocks: 0,
   builder: false,
@@ -92,6 +98,7 @@ const initial: State = {
   unlockedHats: [],
   storeOpen: false,
   customiseOpen: false,
+  selectedBuilding: null,
 };
 
 function reducer(s: State, a: Action): State {
@@ -100,6 +107,7 @@ function reducer(s: State, a: Action): State {
       return { ...s, mode: a.mode };
     case 'stake': {
       if (s.builder || a.amount < CONFIG.stakeMin || a.amount > s.balance) return s;
+      const granted = blocksForStake(a.amount);
       const feed: FeedItem[] = [
         {
           id: nextId(),
@@ -114,11 +122,11 @@ function reducer(s: State, a: Action): State {
         builder: true,
         staked: a.amount,
         balance: s.balance - a.amount,
-        blocks: s.blocks + CONFIG.starterBlocks,
+        blocks: s.blocks + granted,
         feed,
         toasts: [
           ...s.toasts,
-          { id: nextId(), text: `🏗️ Builder unlocked — +${CONFIG.starterBlocks} starter blocks` },
+          { id: nextId(), text: `🏗️ Builder unlocked — +${granted} blocks` },
         ],
         customiseOpen: true,   // first visit: pick your resident's look
       };
@@ -128,24 +136,29 @@ function reducer(s: State, a: Action): State {
       const before = plotAllowance(s.staked);
       const staked = s.staked + a.amount;
       const after = plotAllowance(staked);
+      const gained = blocksForStake(staked) - blocksForStake(s.staked);
       return {
         ...s,
         balance: s.balance - a.amount,
         staked,
+        blocks: s.blocks + gained,
         feed: [
           {
             id: nextId(),
             icon: '🔒',
             text: `Staked ${a.amount.toLocaleString()} $BLOCKVILLE`,
-            detail: after > before
-              ? `You can now claim ${after} block${after === 1 ? '' : 's'} of land`
-              : `Total staked: ${staked.toLocaleString()}`,
+            detail: [
+              after > before ? `You can now claim ${after} block${after === 1 ? '' : 's'} of land` : null,
+              gained > 0 ? `+${gained} blocks from your larger stake` : null,
+            ].filter(Boolean).join(' · ') || `Total staked: ${staked.toLocaleString()}`,
           },
           ...s.feed,
         ].slice(0, 8),
-        toasts: after > before
-          ? [...s.toasts, { id: nextId(), text: `🗺️ Block of land unlocked — ${after}/${CONFIG.maxPlots}` }]
-          : s.toasts,
+        toasts: [
+          ...s.toasts,
+          ...(after > before ? [{ id: nextId(), text: `🗺️ Block of land unlocked — ${after}/${CONFIG.maxPlots}` }] : []),
+          ...(gained > 0 ? [{ id: nextId(), text: `🧱 +${gained} blocks from staking more` }] : []),
+        ],
       };
     }
     case 'claim': {
@@ -173,7 +186,8 @@ function reducer(s: State, a: Action): State {
     }
     case 'buildClick': {
       const plots = s.plots.map((p) => {
-        if (p.id !== a.plot || !p.type || p.done || s.blocks <= 0) return p;
+        // blocks were paid in full when the plot was claimed; clicking places them
+        if (p.id !== a.plot || !p.type || p.done) return p;
         const def = BUILDING_DEFS[p.type];
         const progress = p.progress + 1;
         const done = progress >= def.cost;
@@ -182,7 +196,7 @@ function reducer(s: State, a: Action): State {
       if (plots.every((p, i) => p === s.plots[i])) return s; // nothing consumed
       const finished = plots.find((p, i) => p.done && !s.plots[i].done);
       const completed = finished?.type ?? null;
-      const base: State = { ...s, blocks: s.blocks - 1, plots };
+      const base: State = { ...s, plots };
       if (completed) {
         const def = BUILDING_DEFS[completed];
         return {
@@ -203,6 +217,31 @@ function reducer(s: State, a: Action): State {
     }
     case 'selectPlot':
       return { ...s, selectedPlot: a.plot };
+    case 'upgrade': {
+      const p = s.plots.find((q) => q.id === a.plot);
+      if (!p || !p.type || !p.done || p.level >= CONFIG.maxLevel) return s;
+      const cost = upgradeCost(p.type, p.level);
+      if (s.blocks < cost) return s;
+      const def = BUILDING_DEFS[p.type];
+      return {
+        ...s,
+        blocks: s.blocks - cost,
+        selectedBuilding: null,
+        plots: s.plots.map((q) => (q.id === a.plot ? { ...q, level: q.level + 1 } : q)),
+        feed: [
+          {
+            id: nextId(),
+            icon: '⬆️',
+            text: `${def.name} upgraded to level ${p.level + 1}`,
+            detail: `${cost} blocks spent — fee share is now ×${feeMultFor(p.level + 1).toFixed(1)}`,
+          },
+          ...s.feed,
+        ].slice(0, 8),
+        toasts: [...s.toasts, { id: nextId(), text: `⬆️ ${def.name} → Level ${p.level + 1} (fees ×${feeMultFor(p.level + 1).toFixed(1)})` }],
+      };
+    }
+    case 'openBuilding':
+      return { ...s, selectedBuilding: a.plot };
     case 'buyItem': {
       const item = STORE_ITEMS.find((i) => i.id === a.item);
       if (!item || s.balance < item.price) return s;
@@ -266,6 +305,7 @@ function reducer(s: State, a: Action): State {
 export interface EngineApi {
   sync: (plots: Plot[], npcTarget: number) => void;
   setLook: (look: PlayerLook) => void;
+  setInputEnabled: (v: boolean) => void;
   dispose: () => void;
 }
 
@@ -284,10 +324,10 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
   // The engine lives in App via a ref set by GameCanvas; feed reward events through here.
   const api = useMemo(
     () => ({
-      requestReward: (building: BuildingType) => {
+      requestReward: (building: BuildingType, level: number) => {
         if (Math.random() < CONFIG.feeChance) {
           const amt = CONFIG.feeMin + Math.random() * (CONFIG.feeMax - CONFIG.feeMin);
-          dispatch({ t: 'npcReward', building, amount: Math.round(amt * 100) / 100 });
+          dispatch({ t: 'npcReward', building, amount: Math.round(amt * feeMultFor(level) * 100) / 100 });
         }
       },
     }),
@@ -315,7 +355,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
 const engineBridgeContext = createContext<{
   setEngine: (e: EngineApi | null) => void;
   getEngine: () => EngineApi | null;
-  rewardBridge: () => { requestReward: (b: BuildingType) => void };
+  rewardBridge: () => { requestReward: (b: BuildingType, level: number) => void };
 } | null>(null);
 
 export function useEngineBridge() {

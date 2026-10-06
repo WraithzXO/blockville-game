@@ -7,6 +7,9 @@ import {
   SHIRT_COLORS,
   SKIN_TONES,
   STORE_ITEMS,
+  blocksForStake,
+  feeMultFor,
+  upgradeCost,
   plotAllowance,
   stageFor,
   type BuildingType,
@@ -14,6 +17,7 @@ import {
 } from './game/config';
 import { GameProvider, useGame, useToastTimer } from './game/state';
 import GameCanvas from './game/GameCanvas';
+import CharacterPreview from './game/CharacterPreview';
 
 // ── staking modal ──────────────────────────────────────────────────────────
 function StakeModal() {
@@ -56,6 +60,10 @@ function StakeModal() {
             <div className="hint-row">
               <span>Minimum: {CONFIG.stakeMin.toLocaleString()}</span>
               <span>Demo balance: {state.balance.toLocaleString()}</span>
+            </div>
+            <div className="reward-preview">
+              <span>🧱 You'll receive</span>
+              <b>+{blocksForStake(amount)} blocks</b>
             </div>
             <input
               className="slider"
@@ -130,59 +138,64 @@ function CustomiseModal() {
     <div className="modal-backdrop" onClick={() => dispatch({ t: 'setCustomiseOpen', open: false })}>
       <div className="modal customise-modal" onClick={(e) => e.stopPropagation()}>
         <div className="store-sign">🧍 CUSTOMISE YOUR RESIDENT</div>
-        <p className="store-copy">
-          This is your character standing by the store. Pick a look — change it any time from the top bar.
-        </p>
-        <div className="cust-row-label">Skin</div>
-        <div className="chip-row">
-          {SKIN_TONES.map((s) => (
-            <button
-              key={s}
-              className={`chip swatch ${state.look.skin === s ? 'active' : ''}`}
-              style={{ background: s }}
-              onClick={() => set({ skin: s })}
-            />
-          ))}
-        </div>
-        <div className="cust-row-label">Shirt</div>
-        <div className="chip-row">
-          {SHIRT_COLORS.map((c) => (
-            <button
-              key={c.hex}
-              className={`chip swatch ${state.look.shirt === c.hex ? 'active' : ''}`}
-              style={{ background: c.hex }}
-              title={c.name}
-              onClick={() => set({ shirt: c.hex })}
-            />
-          ))}
-        </div>
-        <div className="cust-row-label">Face</div>
-        <div className="chip-row">
-          {FACE_STYLES.map((f) => (
-            <button
-              key={f.id}
-              className={`chip text ${state.look.face === f.id ? 'active' : ''}`}
-              onClick={() => set({ face: f.id })}
-            >
-              {f.label}
-            </button>
-          ))}
-        </div>
-        <div className="cust-row-label">Hat</div>
-        <div className="chip-row">
-          {HATS.map((h) => {
-            const owned = h.price === 0 || state.unlockedHats.includes(h.id);
-            return (
-              <button
-                key={h.id}
-                className={`chip text ${state.look.hat === h.id ? 'active' : ''} ${owned ? '' : 'locked'}`}
-                title={owned ? '' : `Buy in the Blockville Store — ${h.price.toLocaleString()} $BLOCKVILLE`}
-                onClick={() => owned && set({ hat: h.id })}
-              >
-                {owned ? h.label : `🔒 ${h.label}`}
-              </button>
-            );
-          })}
+        <div className="cust-grid">
+          <div className="cust-preview-col">
+            <CharacterPreview look={state.look} />
+            <div className="cust-preview-note">Drag to spin — changes apply live in the town</div>
+          </div>
+          <div className="cust-options-col">
+            <div className="cust-row-label">Skin</div>
+            <div className="chip-row">
+              {SKIN_TONES.map((s) => (
+                <button
+                  key={s}
+                  className={`chip swatch ${state.look.skin === s ? 'active' : ''}`}
+                  style={{ background: s }}
+                  onClick={() => set({ skin: s })}
+                />
+              ))}
+            </div>
+            <div className="cust-row-label">Shirt</div>
+            <div className="chip-row">
+              {SHIRT_COLORS.map((c) => (
+                <button
+                  key={c.hex}
+                  className={`chip swatch ${state.look.shirt === c.hex ? 'active' : ''}`}
+                  style={{ background: c.hex }}
+                  title={c.name}
+                  onClick={() => set({ shirt: c.hex })}
+                />
+              ))}
+            </div>
+            <div className="cust-row-label">Face</div>
+            <div className="chip-row">
+              {FACE_STYLES.map((f) => (
+                <button
+                  key={f.id}
+                  className={`chip text ${state.look.face === f.id ? 'active' : ''}`}
+                  onClick={() => set({ face: f.id })}
+                >
+                  {f.label}
+                </button>
+              ))}
+            </div>
+            <div className="cust-row-label">Hat</div>
+            <div className="chip-row">
+              {HATS.map((h) => {
+                const owned = h.price === 0 || state.unlockedHats.includes(h.id);
+                return (
+                  <button
+                    key={h.id}
+                    className={`chip text ${state.look.hat === h.id ? 'active' : ''} ${owned ? '' : 'locked'}`}
+                    title={owned ? '' : `Buy in the Blockville Store — ${h.price.toLocaleString()} $BLOCKVILLE`}
+                    onClick={() => owned && set({ hat: h.id })}
+                  >
+                    {owned ? h.label : `🔒 ${h.label}`}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
         </div>
         <button className="cta" onClick={() => dispatch({ t: 'setCustomiseOpen', open: false })}>
           Done — my resident is by the store
@@ -259,6 +272,15 @@ function StakeMoreModal({ onClose }: { onClose: () => void }) {
           <span>Balance: {state.balance.toLocaleString(undefined, { maximumFractionDigits: 2 })}</span>
           <span>{nextPlot ? `Unlocks plot #${nextPlot}` : 'Not enough for another plot yet'}</span>
         </div>
+        {(() => {
+          const gained = blocksForStake(state.staked + amount) - blocksForStake(state.staked);
+          return gained > 0 ? (
+            <div className="reward-preview">
+              <span>🧱 You'll receive</span>
+              <b>+{gained} blocks</b>
+            </div>
+          ) : null;
+        })()}
         <button
           className="cta"
           disabled={!can}
@@ -269,6 +291,55 @@ function StakeMoreModal({ onClose }: { onClose: () => void }) {
         >
           Stake {amount.toLocaleString()} more
         </button>
+      </div>
+    </div>
+  );
+}
+
+// ── building menu (inspect + upgrade a finished building) ──────────────────
+function BuildingMenu() {
+  const { state, dispatch } = useGame();
+  if (state.selectedBuilding === null) return null;
+  const plot = state.plots.find((p) => p.id === state.selectedBuilding);
+  if (!plot || !plot.type || !plot.done) return null;
+  const def = BUILDING_DEFS[plot.type];
+  const atMax = plot.level >= CONFIG.maxLevel;
+  const cost = atMax ? 0 : upgradeCost(plot.type, plot.level);
+  const canAfford = state.blocks >= cost;
+  return (
+    <div className="bmenu-backdrop" onClick={() => dispatch({ t: 'openBuilding', plot: null })}>
+      <div className="bmenu" onClick={(e) => e.stopPropagation()} data-testid="building-menu">
+        <div className="bmenu-head" style={{ ['--accent' as string]: def.tint }}>
+          <span className="bmenu-icon">{def.icon}</span>
+          <div>
+            <div className="bmenu-name">{def.name}</div>
+            <div className="bmenu-lvl">Level {plot.level} · fee share ×{feeMultFor(plot.level).toFixed(1)}</div>
+          </div>
+          <button className="x" onClick={() => dispatch({ t: 'openBuilding', plot: null })}>✕</button>
+        </div>
+        <p className="bmenu-blurb">{def.blurb}</p>
+        {atMax ? (
+          <div className="bmenu-max">👑 Max level — this {def.name.toLowerCase()} pays ×{feeMultFor(plot.level).toFixed(1)} fees</div>
+        ) : (
+          <>
+            <div className="bmenu-upg-row">
+              <div className="bmenu-upg-info">
+                <b>Upgrade to Level {plot.level + 1}</b>
+                <small>Fee share ×{feeMultFor(plot.level).toFixed(1)} → ×{feeMultFor(plot.level + 1).toFixed(1)} · the building grows</small>
+              </div>
+              <div className="bmenu-cost">🧱 {cost}</div>
+            </div>
+            <button
+              className="cta"
+              disabled={!canAfford}
+              onClick={() => dispatch({ t: 'upgrade', plot: plot.id })}
+            >
+              {canAfford
+                ? `⬆️ Upgrade for ${cost} blocks`
+                : `Need ${cost - state.blocks} more blocks`}
+            </button>
+          </>
+        )}
       </div>
     </div>
   );
@@ -381,6 +452,7 @@ function Shell() {
       {(!state.builder || state.mode === 'wallet') && <StakeModal />}
       <ClaimMenu />
       <StorePanel />
+      <BuildingMenu />
       <BuildHud />
       <CustomiseModal />
       {state.builder && <Feed />}

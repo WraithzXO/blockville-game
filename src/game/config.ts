@@ -6,7 +6,7 @@ export type BuildingType = 'casino' | 'mine' | 'shop' | 'bank';
 export const CONFIG = {
   // Staking
   stakeMin: 20_000,          // $BLOCKVILLE needed to become a Builder
-  starterBlocks: 120,        // blocks granted on becoming a Builder
+  blocksPer20k: 120,         // blocks granted per 20,000 staked — stake more, build more
 
   // Land ("blocks"): up to 5 claimable plots, each requiring 20,000 staked
   plotStakeCost: 20_000,     // stake locked per plot ("block of land")
@@ -25,7 +25,30 @@ export const CONFIG = {
   maxNpcs: 12,               // hard cap — keep it light
   bubbleTimeMin: 1.5,        // seconds a chat bubble stays visible
   bubbleTimeMax: 3.0,
+
+  // Building upgrades (foundation for progression)
+  maxLevel: 3,               // every building can reach level 3
+  upgradeCostMult: 1.5,      // upgrading costs 1.5x the base cost, compounding per level
+  feeBoostPerLevel: 0.5,     // each level adds +50% to your share of that building's fees
+
+  // Player character
+  playerSpeed: 9,            // world units per second while walking
+  interactRange: 11,         // how close you must be to interact with a plot/building
+  storeRange: 10,            // how close you must be to use the Blockville Store
 } as const;
+
+// total blocks granted for a given stake (initial stake and top-ups alike)
+export const blocksForStake = (staked: number) =>
+  Math.floor(staked / CONFIG.plotStakeCost) * CONFIG.blocksPer20k;
+
+// cost in blocks to take a building from `level` to `level + 1`
+// (level 1→2 costs 1.5x the base build, level 2→3 costs 2.25x)
+export const upgradeCost = (type: BuildingType, level: number) =>
+  Math.round(BUILDING_DEFS[type].cost * Math.pow(CONFIG.upgradeCostMult, level));
+
+// fee-share multiplier for a building at a given level (level 1 = 1.0x)
+export const feeMultFor = (level: number) =>
+  1 + (level - 1) * CONFIG.feeBoostPerLevel;
 
 // ── character customisation ────────────────────────────────────────────────
 export type HatType = 'none' | 'cap' | 'beanie' | 'crown' | 'tophat';
