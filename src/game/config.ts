@@ -1,21 +1,46 @@
 // ── BLOCKVILLE configuration ──────────────────────────────────────────────
 // Every gameplay number lives here so it can be tuned without touching logic.
 
-export type BuildingType = 'casino' | 'mine' | 'shop' | 'bank';
+export type BuildingType = 'casino' | 'mine' | 'shop' | 'bank' | 'cafe' | 'arcade' | 'bakery' | 'park';
 
 export const CONFIG = {
   // Staking
   stakeMin: 20_000,          // $BLOCKVILLE needed to become a Builder
-  blocksPer20k: 120,         // blocks granted per 20,000 staked — stake more, build more
+  starterBlocks: 120,        // blocks granted on becoming a Builder
 
   // Land ("blocks"): up to 5 claimable plots, each requiring 20,000 staked
   plotStakeCost: 20_000,     // stake locked per plot ("block of land")
   maxPlots: 5,               // hard cap on claims per holder
 
+  // Marketplace (demo simulation — NOT real trading)
+  market: {
+    listPriceMin: 4_000,     // residents list plots between these prices
+    listPriceMax: 14_000,
+    simListChance: 0.12,     // per tick: a resident lists one of their plots
+    simBuyChance: 0.15,      // per tick: a buyer purchases a listing
+    simClaimChance: 0.10,    // per tick: a resident claims a free plot
+    tickMs: 8_000,           // simulation heartbeat
+    maxOpenListings: 7,      // keep the board tidy
+  },
+
+  wave: 1,                   // current land wave
+
   // Fee rewards (demo placeholder — NOT real on-chain rewards)
   feeChance: 0.35,           // chance an NPC visit generates a fee share
   feeMin: 0.02,
   feeMax: 0.35,
+
+  // ── Treasury & fee distribution (demo structure — wallet is a placeholder
+  // until the backend rollout; no real token movements are simulated) ──
+  treasury: {
+    walletLabel: 'BVtre…5xKQ',   // placeholder display address
+    pumpfunSharePct: 75,         // % of all PumpFun fees routed into the Treasury
+    storeRoutePct: 100,          // % of every Store purchase routed into the Treasury
+    distributePct: 20,           // % of Treasury balance paid out per distribution
+    distributeEveryMs: 45_000,   // base interval between distributions (± jitter)
+    // Simulated PumpFun fee drip, checked once per market heartbeat:
+    pumpfunTick: { chance: 0.55, min: 6, max: 60 },
+  },
 
   // NPC economy (visual only)
   npcIntervalMin: 2.5,       // seconds between NPC visits (randomised)
@@ -25,30 +50,7 @@ export const CONFIG = {
   maxNpcs: 12,               // hard cap — keep it light
   bubbleTimeMin: 1.5,        // seconds a chat bubble stays visible
   bubbleTimeMax: 3.0,
-
-  // Building upgrades (foundation for progression)
-  maxLevel: 3,               // every building can reach level 3
-  upgradeCostMult: 1.5,      // upgrading costs 1.5x the base cost, compounding per level
-  feeBoostPerLevel: 0.5,     // each level adds +50% to your share of that building's fees
-
-  // Player character
-  playerSpeed: 9,            // world units per second while walking
-  interactRange: 11,         // how close you must be to interact with a plot/building
-  storeRange: 10,            // how close you must be to use the Blockville Store
 } as const;
-
-// total blocks granted for a given stake (initial stake and top-ups alike)
-export const blocksForStake = (staked: number) =>
-  Math.floor(staked / CONFIG.plotStakeCost) * CONFIG.blocksPer20k;
-
-// cost in blocks to take a building from `level` to `level + 1`
-// (level 1→2 costs 1.5x the base build, level 2→3 costs 2.25x)
-export const upgradeCost = (type: BuildingType, level: number) =>
-  Math.round(BUILDING_DEFS[type].cost * Math.pow(CONFIG.upgradeCostMult, level));
-
-// fee-share multiplier for a building at a given level (level 1 = 1.0x)
-export const feeMultFor = (level: number) =>
-  1 + (level - 1) * CONFIG.feeBoostPerLevel;
 
 // ── character customisation ────────────────────────────────────────────────
 export type HatType = 'none' | 'cap' | 'beanie' | 'crown' | 'tophat';
@@ -174,6 +176,56 @@ export const BUILDING_DEFS: Record<BuildingType, BuildingDef> = {
       '🏦 Opening a Vault',
     ],
   },
+  cafe: {
+    name: 'Cafe',
+    icon: '☕',
+    blurb: 'Residents stop by for a warm drink and a chat.',
+    cost: 35,
+    tint: '#b07b4f',
+    activities: [
+      '☕ Ordering a Latte',
+      '☕ Ordering a Coffee',
+      '🍪 Buying a Cookie',
+      '💬 Chatting with Friends',
+    ],
+  },
+  arcade: {
+    name: 'Arcade',
+    icon: '🕹️',
+    blurb: 'High scores, bright lights and happy gamers.',
+    cost: 55,
+    tint: '#b455e0',
+    activities: [
+      '🕹️ Playing {n} Credits',
+      '🏆 New High Score!',
+      '🕹️ Challenging a Friend',
+    ],
+  },
+  bakery: {
+    name: 'Bakery',
+    icon: '🍞',
+    blurb: 'Fresh bread and sweet rolls every morning.',
+    cost: 40,
+    tint: '#d9a441',
+    activities: [
+      '🍞 Buying Fresh Bread',
+      '🥐 Buying a Croissant',
+      '🎂 Ordering a Cake',
+    ],
+  },
+  park: {
+    name: 'Town Park',
+    icon: '🌳',
+    blurb: 'A green spot with a fountain everyone loves.',
+    cost: 25,
+    tint: '#63c46e',
+    activities: [
+      '🦆 Feeding the Ducks',
+      '🚶 Taking a Stroll',
+      '🧺 Having a Picnic',
+      '⛲ Tossing a Coin',
+    ],
+  },
 };
 
 export const randInt = (min: number, max: number) =>
@@ -186,27 +238,93 @@ export const pickActivity = (type: BuildingType): string => {
 };
 
 // ── World layout ───────────────────────────────────────────────────────────
-// 8 plots around a crossroad. The starter Blockville Store anchors the north.
-export interface PlotDef { id: number; x: number; z: number; side: 'north' | 'south' }
+// An organised town grid along the main street, like the start of a city:
+// two rows front the main road, a back row sits across a second street,
+// and Wave-1 land extends south in further blocks between cross streets.
+// Wave 1 = 100 plots total. Once all are claimed, the only way in is the
+// marketplace until the next wave of land is added.
+export interface PlotDef {
+  id: number;
+  x: number;
+  z: number;
+  side: 'north' | 'south';
+}
 
-export const PLOT_POSITIONS: PlotDef[] = [
-  { id: 0, x: -24, z: -10, side: 'north' },
-  { id: 1, x: -8, z: -10, side: 'north' },
-  { id: 2, x: 8, z: -10, side: 'north' },
-  { id: 3, x: 24, z: -10, side: 'north' },
-  { id: 4, x: -24, z: 10, side: 'south' },
-  { id: 5, x: -8, z: 10, side: 'south' },
-  { id: 6, x: 8, z: 10, side: 'south' },
-  { id: 7, x: 24, z: 10, side: 'south' },
+const CORE: PlotDef[] = [
+  // main-street north row (claimable)
+  { id: 0, x: -26, z: -10, side: 'north' },
+  { id: 1, x: -13, z: -10, side: 'north' },
+  { id: 2, x: 13, z: -10, side: 'north' },
+  { id: 3, x: 26, z: -10, side: 'north' },
+  // main-street south row
+  { id: 4, x: -26, z: 10, side: 'south' },
+  { id: 5, x: -13, z: 10, side: 'south' },
+  { id: 6, x: 13, z: 10, side: 'south' },
+  { id: 7, x: 26, z: 10, side: 'south' },
+  // back row across the second street
+  { id: 8, x: -26, z: 26, side: 'south' },
+  { id: 9, x: -13, z: 26, side: 'south' },
+  { id: 10, x: 13, z: 26, side: 'south' },
+  { id: 11, x: 26, z: 26, side: 'south' },
+];
+
+// Wave-1 expansion: 8 further rows of 11 plots between cross streets.
+const GRID_ROWS: { z: number; side: 'north' | 'south' }[] = [
+  { z: 42, side: 'north' }, { z: 58, side: 'south' },
+  { z: 74, side: 'north' }, { z: 90, side: 'south' },
+  { z: 106, side: 'north' }, { z: 122, side: 'south' },
+  { z: 138, side: 'north' }, { z: 154, side: 'south' },
+];
+const GRID_COLS = [-65, -52, -39, -26, -13, 0, 13, 26, 39, 52, 65];
+const GRID: PlotDef[] = GRID_ROWS.flatMap((r, ri) =>
+  GRID_COLS.map((x, ci) => ({
+    id: CORE.length + ri * GRID_COLS.length + ci,
+    x,
+    z: r.z,
+    side: r.side,
+  })),
+);
+
+export const PLOT_POSITIONS: PlotDef[] = [...CORE, ...GRID];
+export const TOTAL_PLOTS = PLOT_POSITIONS.length;   // 100 in Wave 1
+
+// Plots already owned by residents when the demo starts — the town is not
+// empty, and these seed the marketplace with real second-hand supply.
+export const COMMUNITY_PLOTS: { id: number; type: BuildingType }[] = [
+  { id: 17, type: 'shop' },
+  { id: 28, type: 'casino' },
+  { id: 39, type: 'cafe' },
+  { id: 50, type: 'mine' },
+  { id: 61, type: 'arcade' },
+  { id: 72, type: 'bakery' },
+  { id: 83, type: 'bank' },
+  { id: 94, type: 'park' },
+];
+
+// Listings live at the start (all on resident-owned plots).
+export const START_LISTINGS: { plot: number; price: number }[] = [
+  { plot: 28, price: 9_800 },
+  { plot: 61, price: 6_500 },
+  { plot: 94, price: 4_200 },
 ];
 
 export const STORE_POS = { x: 0, z: -22 };
 
+// Resident Builders used for proportional fee distribution in the demo —
+// the player's share of a distribution is their stake / total stake.
+export const RESIDENT_BUILDERS: { name: string; stake: number }[] = [
+  { name: 'Nova', stake: 40_000 },
+  { name: 'Rex', stake: 25_000 },
+  { name: 'Momo', stake: 60_000 },
+  { name: 'Vega', stake: 20_000 },
+  { name: 'Juno', stake: 35_000 },
+];
+
 export const TOWN_STAGES: { min: number; label: string }[] = [
   { min: 0, label: 'Outpost' },
   { min: 1, label: 'Early Blockville' },
-  { min: 3, label: 'Growing Blockville' },
-  { min: 5, label: 'Large Blockville' },
+  { min: 2, label: 'Growing Blockville' },
+  { min: 4, label: 'Large Blockville' },
 ];
 
 export const stageFor = (built: number) =>

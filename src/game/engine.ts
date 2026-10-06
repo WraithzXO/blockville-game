@@ -14,13 +14,6 @@ import {
 } from './config';
 import type { EngineApi, Plot } from './state';
 
-// What the player is standing near — drives the "press E" prompt in the UI
-export interface NearInfo {
-  kind: 'plot' | 'site' | 'store' | 'done';
-  plotId?: number;
-  label: string;
-}
-
 // ── small helpers ──────────────────────────────────────────────────────────
 const mat = (color: number | string, opts: THREE.MeshStandardMaterialParameters = {}) =>
   new THREE.MeshStandardMaterial({ color, roughness: 0.85, metalness: 0.05, ...opts });
@@ -436,54 +429,219 @@ function buildMesh(type: BuildingType, level: number): THREE.Group {
     case 'mine': return buildMine(level);
     case 'shop': return buildShop(level);
     case 'bank': return buildBank(level);
+    case 'cafe': return buildCafe(level);
+    case 'arcade': return buildArcade(level);
+    case 'bakery': return buildBakery(level);
+    case 'park': return buildPark(level);
   }
+}
+
+function buildCafe(level: number): THREE.Group {
+  const g = new THREE.Group();
+  const s = 1 + (level - 1) * 0.15;
+  const body = box(5.6 * s, 3.2 * s, 5, mat(0xe8d5b7));          // warm cream walls
+  body.position.y = 1.6 * s;
+  g.add(body);
+  const roof = box(6 * s, 0.5 * s, 5.4, mat(0x7a4e2d));          // coffee-brown roof
+  roof.position.y = 3.45 * s;
+  g.add(roof);
+  // brown-and-cream awning
+  for (let i = 0; i < 5; i++) {
+    const stripe = box((5.6 * s) / 5, 0.12, 1.3, mat(i % 2 ? 0x7a4e2d : 0xfff3e0));
+    stripe.position.set(-5.6 * s / 2 + (i + 0.5) * ((5.6 * s) / 5), 2.25 * s, 2.9);
+    stripe.rotation.x = 0.35;
+    g.add(stripe);
+  }
+  const door = box(1.6, 2.1, 0.15, mat(0x5c3a21));
+  door.position.set(-1.2, 1.05, 2.55 * s);
+  g.add(door);
+  const win = windowBox(1.8, 1.3);
+  win.position.set(1.2, 1.6 * s, 2.55 * s);
+  g.add(win);
+  // steaming cup sign
+  const board = sign('☕ CAFE', '#7a4e2d', 3.8, 1.1);
+  board.position.set(0, 3 * s, 2.6 * s);
+  g.add(board);
+  // little round tables with umbrellas out front
+  for (const tx of [-2.6, 2.6]) {
+    const table = new THREE.Mesh(new THREE.CylinderGeometry(0.55, 0.55, 0.12, 8), mat(0x8a5a33));
+    table.position.set(tx, 0.75, 4.2);
+    const leg = box(0.12, 0.7, 0.12, mat(0x5c3a21));
+    leg.position.set(tx, 0.35, 4.2);
+    const umb = new THREE.Mesh(new THREE.ConeGeometry(0.9, 0.5, 8), mat(0xe0574f));
+    umb.position.set(tx, 1.6, 4.2);
+    g.add(table, leg, umb);
+  }
+  // chimney with steam puff
+  const chim = box(0.6, 1.2, 0.6, mat(0x9c6b45));
+  chim.position.set(-2 * s, 4.2 * s, -1);
+  g.add(chim);
+  if (level >= 2) {
+    const board2 = sign('BLOCKVILLE ROASTS', '#7a4e2d', 5, 0.9);
+    board2.position.set(0, 4.6 * s, 2.6);
+    g.add(board2);
+  }
+  frontPath(g, 3.2);
+  return g;
+}
+
+function buildArcade(level: number): THREE.Group {
+  const g = new THREE.Group();
+  const s = 1 + (level - 1) * 0.15;
+  const body = box(6.2 * s, 3.8 * s, 5.2 * s, mat(0x2b2440));     // midnight purple
+  body.position.y = 1.9 * s;
+  g.add(body);
+  const roof = box(6.6 * s, 0.45 * s, 5.6 * s, mat(0xb455e0, { emissive: 0x7b2ea0, emissiveIntensity: 0.35 }));
+  roof.position.y = 4.05 * s;
+  g.add(roof);
+  // glowing neon sign
+  const board = sign('ARCADE', '#7b2ea0', 4.6, 1.2);
+  board.position.set(0, 3.3 * s, 2.7 * s);
+  g.add(board);
+  const door = box(2.2, 2.3, 0.15, mat(0x120f1e, { metalness: 0.5, roughness: 0.3 }));
+  door.position.set(0, 1.15, 2.65 * s);
+  g.add(door);
+  // pixel-style neon windows
+  for (const wx of [-2.4, 2.4]) {
+    const win = box(1.2, 1.2, 0.15, mat(0x67e8f9, { emissive: 0x22d3ee, emissiveIntensity: 0.6 }));
+    win.position.set(wx * s, 2.1 * s, 2.65 * s);
+    g.add(win);
+  }
+  // cabinet machines lined up outside
+  for (let i = 0; i < 2 + level; i++) {
+    const cab = box(0.9, 1.9, 0.8, mat(i % 2 ? 0xe0574f : 0x4f8fe0));
+    cab.position.set(-2.4 + i * 1.1, 0.95, 3.4);
+    const screen = box(0.7, 0.5, 0.1, mat(0xaff3ff, { emissive: 0x67e8f9, emissiveIntensity: 0.8 }));
+    screen.position.set(-2.4 + i * 1.1, 1.45, 3.82);
+    g.add(cab, screen);
+  }
+  entranceSteps(g, 3.3, 3);
+  if (level >= 3) {
+    const marquee = box(3, 0.6, 0.6, mat(0xf2b134, { emissive: 0xffc94d, emissiveIntensity: 0.7 }));
+    marquee.position.set(0, 4.8 * s, 2.7 * s);
+    g.add(marquee);
+  }
+  frontPath(g, 3.9);
+  return g;
+}
+
+function buildBakery(level: number): THREE.Group {
+  const g = new THREE.Group();
+  const s = 1 + (level - 1) * 0.15;
+  const body = box(5.8 * s, 3.4 * s, 5.2 * s, mat(0xf7d9e0));    // soft pastel pink
+  body.position.y = 1.7 * s;
+  g.add(body);
+  // sloped roof from two slabs
+  const roofL = box(3.2 * s, 0.4 * s, 5.6 * s, mat(0xa8543c));
+  roofL.rotation.z = 0.22;
+  roofL.position.set(-1.5 * s, 4.1 * s, 0);
+  const roofR = roofL.clone();
+  roofR.rotation.z = -0.22;
+  roofR.position.x = 1.5 * s;
+  g.add(roofL, roofR);
+  const door = box(1.6, 2.1, 0.15, mat(0x8a4a35));
+  door.position.set(-1.1, 1.05, 2.65 * s);
+  g.add(door);
+  // display window with bread
+  const win = box(2.2, 1.5, 0.15, mat(0x9fd8ef));
+  win.position.set(1.2, 1.7 * s, 2.65 * s);
+  g.add(win);
+  const breads = [0xd9a441, 0xc98a3c, 0xe8b04c];
+  for (let i = 0; i < 3; i++) {
+    const loaf = box(0.5, 0.32, 0.4, mat(breads[i]));
+    loaf.position.set(0.6 + i * 0.6, 1.05, 2.85 * s);
+    g.add(loaf);
+  }
+  const board = sign('BAKERY', '#a8543c', 4, 1.1);
+  board.position.set(0, 3.1 * s, 2.68 * s);
+  g.add(board);
+  // brick chimney
+  const chim = box(0.7, 1.6, 0.7, mat(0xb4552e));
+  chim.position.set(2 * s, 4.4 * s, -1.2);
+  g.add(chim);
+  entranceSteps(g, 3.3, 2.4);
+  if (level >= 2) {
+    const ext = box(2, 2.4 * s, 3.6 * s, mat(0xf7d9e0));
+    ext.position.set(3.8 * s, 1.2 * s, 0);
+    g.add(ext);
+  }
+  frontPath(g, 3.4);
+  return g;
+}
+
+function buildPark(level: number): THREE.Group {
+  const g = new THREE.Group();
+  // lawn slab
+  const lawn = box(9, 0.12, 9, mat(0x6dbb5a));
+  lawn.position.y = 0.06;
+  lawn.receiveShadow = true;
+  g.add(lawn);
+  // central fountain
+  const basin = new THREE.Mesh(new THREE.CylinderGeometry(1.7, 1.9, 0.7, 12), mat(0xb9b2a4));
+  basin.position.y = 0.35;
+  basin.castShadow = true;
+  g.add(basin);
+  const water = new THREE.Mesh(new THREE.CylinderGeometry(1.5, 1.5, 0.5, 12), mat(0x6fc4e8, { roughness: 0.3 }));
+  water.position.y = 0.55;
+  g.add(water);
+  const spout = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.35, 1.2, 8), mat(0xb9b2a4));
+  spout.position.y = 1.1;
+  g.add(spout);
+  const jet = new THREE.Mesh(
+    new THREE.ConeGeometry(0.3, 1.1, 8),
+    new THREE.MeshStandardMaterial({ color: 0xafe8f8, transparent: true, opacity: 0.8, roughness: 0.2 }),
+  );
+  jet.position.y = 2.1;
+  g.add(jet);
+  // hedges, trees and a bench or two
+  for (const [hx, hz] of [[-3.4, -3.4], [3.4, -3.4], [-3.4, 3.4], [3.4, 3.4]] as const) {
+    const hedge = box(1.6, 1, 1.6, mat(0x4e9e4e));
+    hedge.position.set(hx, 0.6, hz);
+    g.add(hedge);
+  }
+  for (const [tx, tz] of [[-3.4, 0], [3.4, 0], [0, -3.4]] as const) {
+    const trunk = box(0.5, 1.6, 0.5, mat(0x7a5230));
+    trunk.position.set(tx, 0.8, tz);
+    const leaf = box(1.8, 1.8, 1.8, mat(0x4e9e4e));
+    leaf.position.set(tx, 2.5, tz);
+    const leaf2 = box(1.1, 1, 1.1, mat(0x5cb85c));
+    leaf2.position.set(tx, 3.6, tz);
+    g.add(trunk, leaf, leaf2);
+  }
+  for (const bx of [-1.8, 1.8]) {
+    const bench = box(1.6, 0.18, 0.5, mat(0x8a6a3f));
+    bench.position.set(bx, 0.55, 3.6);
+    const back = box(1.6, 0.5, 0.12, mat(0x8a6a3f));
+    back.position.set(bx, 0.85, 3.82);
+    g.add(bench, back);
+  }
+  if (level >= 2) {
+    const flowerbed = box(2.4, 0.3, 1, mat(0x8a5a33));
+    flowerbed.position.set(0, 0.25, -1.4);
+    g.add(flowerbed);
+    for (let i = 0; i < 4; i++) {
+      const fl = new THREE.Mesh(new THREE.SphereGeometry(0.2, 6, 6), mat(0xf26d7d));
+      fl.position.set(-0.9 + i * 0.6, 0.55, -1.4);
+      g.add(fl);
+    }
+  }
+  if (level >= 3) {
+    const lamp = new THREE.Mesh(
+      new THREE.SphereGeometry(0.35, 8, 8),
+      new THREE.MeshStandardMaterial({ color: 0xfff1c4, emissive: 0xffe9a8, emissiveIntensity: 0.8 }),
+    );
+    lamp.position.set(0, 3.4, 0);
+    const lamppost = box(0.15, 2.6, 0.15, mat(0x3d4450, { metalness: 0.4 }));
+    lamppost.position.set(0, 1.3, 0);
+    g.add(lamp, lamppost);
+  }
+  return g;
 }
 
 // ── NPC ────────────────────────────────────────────────────────────────────
 const NPC_COLORS = [0xe0574f, 0x4f8fe0, 0x53b56d, 0xc99a3c, 0x8e6fc1, 0xd97fa8, 0x5fb8b0];
 const NPC_HATS: HatType[] = ['none', 'none', 'none', 'cap', 'beanie'];
 const NPC_FACES: FaceType[] = ['smile', 'grin', 'chill', 'wow'];
-
-// builds a blocky resident; pass a look for the player's customised character,
-// or nothing for a randomised NPC. legs are tagged for the walk animation.
-export function buildCharacter(look?: PlayerLook): THREE.Group {
-  const g = new THREE.Group();
-  const shirt = look
-    ? new THREE.Color(look.shirt).getHex()
-    : NPC_COLORS[randInt(0, NPC_COLORS.length - 1)];
-  const skin = look ? look.skin : ['#f5d5b5', '#f0c8a0', '#c98850', '#8d5a3a'][randInt(0, 3)];
-  const face: FaceType = look ? look.face : NPC_FACES[randInt(0, NPC_FACES.length - 1)];
-  const hat: HatType = look ? look.hat : NPC_HATS[randInt(0, NPC_HATS.length - 1)];
-  const legL = box(0.28, 0.7, 0.28, mat(0x35415c));
-  legL.position.set(-0.2, 0.35, 0);
-  const legR = legL.clone();
-  legR.position.x = 0.2;
-  const body = box(0.85, 1.0, 0.5, mat(shirt));
-  body.position.y = 1.2;
-  const armL = box(0.2, 0.85, 0.24, mat(shirt));
-  armL.position.set(-0.55, 1.25, 0);
-  const armR = armL.clone();
-  armR.position.x = 0.55;
-  // head with a real face on the front (+Z), plain skin on the other sides
-  const skinMat = mat(new THREE.Color(skin).getHex());
-  const faceMat = new THREE.MeshStandardMaterial({ map: faceTexture(face, skin), roughness: 0.85 });
-  const head = new THREE.Mesh(
-    new THREE.BoxGeometry(0.75, 0.75, 0.75),
-    [skinMat, skinMat, skinMat, skinMat, faceMat, skinMat],
-  );
-  head.castShadow = true;
-  head.position.y = 2.08;
-  const hair = box(0.78, 0.2, 0.78, mat(0x3a2e26));
-  hair.position.y = 2.46;
-  g.add(legL, legR, body, armL, armR, head, hair);
-  const h = hatMesh(hat);
-  if (h) {
-    h.position.y = 2.56;
-    g.add(h);
-  }
-  (g as any).legs = [legL, legR];
-  return g;
-}
 
 interface Npc {
   group: THREE.Group;
@@ -495,7 +653,7 @@ interface Npc {
   speed: number;
   phase: number;
   building: BuildingType | null;
-  plotId?: number;
+  plotId?: number;       // which plot they are visiting (for ownership checks)
 }
 
 // ── the engine ─────────────────────────────────────────────────────────────
@@ -505,11 +663,11 @@ interface PlotVisual {
   site?: THREE.Group;         // foundation + scaffold + block stack
   stackBlocks: THREE.Mesh[];
   building?: THREE.Group;
-  builtLevel?: number;        // level the current mesh was built at (upgrade detection)
   popT?: number;              // scale-in animation timer
 }
 
 export class Engine implements EngineApi {
+  private clouds: THREE.Group[] = [];
   private renderer: THREE.WebGLRenderer;
   private scene = new THREE.Scene();
   private camera: THREE.PerspectiveCamera;
@@ -527,17 +685,11 @@ export class Engine implements EngineApi {
   private plotState: Plot[] = [];
   private npcTarget: number = CONFIG.baseNpcs;
   private wanderers = 0;
-  private keys = new Set<string>();
-  private inputEnabled = true;
-  private nearInfo: NearInfo | null = null;
 
   private onPlotClick: (id: number) => void;
   private onBuildClick: (id: number) => void;
   private onStoreClick: () => void;
-  private onBuildingClick: (id: number) => void;
-  private onNear: (info: NearInfo | null) => void;
-  private onHint: (text: string) => void;
-  private requestReward: (b: BuildingType, level: number) => void;
+  private requestReward: (b: BuildingType) => void;
   private storeClickPlane?: THREE.Mesh;
   private player?: THREE.Group;
   private playerLook: PlayerLook;
@@ -548,19 +700,13 @@ export class Engine implements EngineApi {
       onPlotClick: (id: number) => void;
       onBuildClick: (id: number) => void;
       onStoreClick: () => void;
-      onBuildingClick: (id: number) => void;
-      onNear: (info: NearInfo | null) => void;
-      onHint: (text: string) => void;
-      requestReward: (b: BuildingType, level: number) => void;
+      requestReward: (b: BuildingType) => void;
     },
     look: PlayerLook,
   ) {
     this.onPlotClick = cb.onPlotClick;
     this.onBuildClick = cb.onBuildClick;
     this.onStoreClick = cb.onStoreClick;
-    this.onBuildingClick = cb.onBuildingClick;
-    this.onNear = cb.onNear;
-    this.onHint = cb.onHint;
     this.requestReward = cb.requestReward;
     this.playerLook = look;
 
@@ -575,19 +721,18 @@ export class Engine implements EngineApi {
     this.bubbleLayer.className = 'bubble-layer';
     container.appendChild(this.bubbleLayer);
 
-    this.scene.background = new THREE.Color(0x8fd0f0);
-    this.scene.fog = new THREE.Fog(0x8fd0f0, 70, 160);
+    this.scene.fog = new THREE.Fog(0xbfe0f5, 100, 320);
 
     this.camera = new THREE.PerspectiveCamera(48, container.clientWidth / container.clientHeight, 0.5, 400);
     this.camera.position.set(0, 30, 42);
 
     this.controls = new OrbitControls(this.camera, this.renderer.domElement);
-    this.controls.target.set(4.5, 1, -16);   // start framing the resident by the store
+    this.controls.target.set(0, 4, -8);
     this.controls.enableDamping = true;
     this.controls.dampingFactor = 0.08;
     this.controls.maxPolarAngle = 1.32;
-    this.controls.minDistance = 8;
-    this.controls.maxDistance = 90;
+    this.controls.minDistance = 14;
+    this.controls.maxDistance = 170;
     this.controls.mouseButtons = { LEFT: THREE.MOUSE.ROTATE, MIDDLE: THREE.MOUSE.DOLLY, RIGHT: THREE.MOUSE.PAN };
 
     this.buildWorld();
@@ -597,17 +742,64 @@ export class Engine implements EngineApi {
 
   // ── world construction ──────────────────────────────────────────────────
   private buildWorld() {
-    const hemi = new THREE.HemisphereLight(0xcfe9ff, 0x7fae6a, 0.9);
+    const hemi = new THREE.HemisphereLight(0xd8edff, 0x83b46e, 1.0);
     this.scene.add(hemi);
-    const sun = new THREE.DirectionalLight(0xfff2d8, 1.5);
+    const sun = new THREE.DirectionalLight(0xffeecb, 1.6);
     sun.position.set(28, 44, 18);
     sun.castShadow = true;
     sun.shadow.mapSize.set(1024, 1024);
-    sun.shadow.camera.left = -60;
-    sun.shadow.camera.right = 60;
-    sun.shadow.camera.top = 60;
-    sun.shadow.camera.bottom = -60;
+    sun.shadow.camera.left = -95;
+    sun.shadow.camera.right = 95;
+    sun.shadow.camera.top = 95;
+    sun.shadow.camera.bottom = -95;
     this.scene.add(sun);
+
+    // gradient sky dome with a soft sun glow — slight detail, still stylised
+    const sc = document.createElement('canvas');
+    sc.width = 16;
+    sc.height = 256;
+    const sg = sc.getContext('2d')!;
+    const grad = sg.createLinearGradient(0, 0, 0, 256);
+    grad.addColorStop(0, '#5ea7e8');   // deeper blue overhead
+    grad.addColorStop(0.55, '#9cccf2');
+    grad.addColorStop(1, '#d9ecf9');   // pale horizon
+    sg.fillStyle = grad;
+    sg.fillRect(0, 0, 16, 256);
+    const skyTex = new THREE.CanvasTexture(sc);
+    skyTex.colorSpace = THREE.SRGBColorSpace;
+    const sky = new THREE.Mesh(
+      new THREE.SphereGeometry(280, 24, 12),
+      new THREE.MeshBasicMaterial({ map: skyTex, side: THREE.BackSide, fog: false }),
+    );
+    this.scene.add(sky);
+    // a soft sun disc
+    const sunDisc = new THREE.Mesh(
+      new THREE.CircleGeometry(14, 24),
+      new THREE.MeshBasicMaterial({ color: 0xfff4cf, transparent: true, opacity: 0.9, fog: false }),
+    );
+    sunDisc.position.set(-100, 40, -220);
+    sunDisc.lookAt(0, 0, 0);
+    this.scene.add(sunDisc);
+    // a handful of low-poly clouds drifting slowly
+    this.clouds = [];
+    const cloudMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 1, fog: false });
+    for (let i = 0; i < 7; i++) {
+      const cl = new THREE.Group();
+      const puffs = 3 + (i % 3);
+      for (let p = 0; p < puffs; p++) {
+        const puff = new THREE.Mesh(new THREE.BoxGeometry(6 - p * 0.8, 2.2, 3.4 - p * 0.4), cloudMat);
+        puff.position.set(p * 2.4 - puffs, (p % 2) * 0.9, 0);
+        cl.add(puff);
+      }
+      if (i < 3) {
+        // a few low, far clouds that peek into the default town view
+        cl.position.set(-180 + i * 90, 5 + (i % 2) * 3, -100 - i * 12);
+      } else {
+        cl.position.set(-150 + i * 46, 24 + (i % 3) * 8, -55 - (i % 4) * 38);
+      }
+      this.scene.add(cl);
+      this.clouds.push(cl);
+    }
 
     // ground with a subtle stylised grid
     const gc = document.createElement('canvas');
@@ -619,26 +811,42 @@ export class Engine implements EngineApi {
     for (let y = 0; y < 4; y++) for (let x = 0; x < 4; x++) if ((x + y) % 2) g2.fillRect(x * 64, y * 64, 64, 64);
     const gt = new THREE.CanvasTexture(gc);
     gt.wrapS = gt.wrapT = THREE.RepeatWrapping;
-    gt.repeat.set(30, 30);
+    gt.repeat.set(50, 50);
     gt.colorSpace = THREE.SRGBColorSpace;
     gt.magFilter = THREE.NearestFilter;
-    const ground = new THREE.Mesh(new THREE.PlaneGeometry(240, 240), new THREE.MeshStandardMaterial({ map: gt }));
+    const ground = new THREE.Mesh(new THREE.PlaneGeometry(420, 420), new THREE.MeshStandardMaterial({ map: gt }));
     ground.rotation.x = -Math.PI / 2;
     ground.receiveShadow = true;
     this.scene.add(ground);
 
-    // roads: main E-W + spur to the store
+    // roads: main E-W + spur to the store + Wave-1 cross streets running south
     const roadMat = mat(0x5d6066, { roughness: 1 });
-    const road1 = new THREE.Mesh(new THREE.PlaneGeometry(120, 6), roadMat);
-    road1.rotation.x = -Math.PI / 2;
-    road1.position.y = 0.02;
-    road1.receiveShadow = true;
-    this.scene.add(road1);
-    const road2 = new THREE.Mesh(new THREE.PlaneGeometry(6, 30), roadMat);
-    road2.rotation.x = -Math.PI / 2;
-    road2.position.set(0, 0.02, -15);
-    road2.receiveShadow = true;
-    this.scene.add(road2);
+    for (const r of [
+      { w: 140, d: 6, x: 0, z: 0 },
+      { w: 6, d: 34, x: 0, z: -17 },
+      { w: 96, d: 6, x: 0, z: 18 },
+      { w: 6, d: 30, x: -34, z: 9 },
+      { w: 6, d: 30, x: 34, z: 9 },
+      ...[34, 66, 98, 130, 162].map((z) => ({ w: 140, d: 6, x: 0, z })),
+    ]) {
+      const road = new THREE.Mesh(new THREE.PlaneGeometry(r.w, r.d), roadMat);
+      road.rotation.x = -Math.PI / 2;
+      road.position.set(r.x, 0.02, r.z);
+      road.receiveShadow = true;
+      this.scene.add(road);
+    }
+    // light sidewalks hugging the main streets
+    const walkMat = mat(0xcfc8b8, { roughness: 1 });
+    for (const w of [
+      { w: 140, d: 2, x: 0, z: 4.2 }, { w: 140, d: 2, x: 0, z: -4.2 },
+      { w: 96, d: 2, x: 0, z: 22.2 }, { w: 96, d: 2, x: 0, z: 13.8 },
+    ]) {
+      const walk = new THREE.Mesh(new THREE.PlaneGeometry(w.w, w.d), walkMat);
+      walk.rotation.x = -Math.PI / 2;
+      walk.position.set(w.x, 0.03, w.z);
+      walk.receiveShadow = true;
+      this.scene.add(walk);
+    }
     // dashed center line
     for (let x = -55; x <= 55; x += 6) {
       const dash = new THREE.Mesh(new THREE.PlaneGeometry(2.4, 0.4), mat(0xf5edc9));
@@ -660,9 +868,10 @@ export class Engine implements EngineApi {
     this.scene.add(storePlane);
     this.storeClickPlane = storePlane;
 
-    // decorative trees
+    // decorative trees — kept well clear of every road and plot
     const treeSpots: [number, number][] = [
-      [-38, -22], [38, -22], [-38, 24], [38, 24], [-46, 2], [46, 2], [-16, -22], [16, -22], [-30, 26], [30, 26],
+      [-42, -22], [42, -22], [-46, -8], [46, -8], [-16, -30], [16, -30],
+      [-44, 14], [44, 14], [-42, 28], [42, 28],
     ];
     for (const [x, z] of treeSpots) {
       const t = new THREE.Group();
@@ -675,6 +884,45 @@ export class Engine implements EngineApi {
       t.add(trunk, leaf, leaf2);
       t.position.set(x, 0, z);
       this.scene.add(t);
+    }
+
+    // welcoming touches: flowerbeds, bushes and street lamps along the main road
+    const flowerColors = [0xf26d7d, 0xf2b134, 0xb455e0, 0xfff3e0, 0x5fb8b0];
+    for (let i = 0; i < 26; i++) {
+      const side = i % 2 ? 1 : -1;
+      const x = -52 + Math.floor(i / 2) * 8 + ((i % 4) ? 2 : 0);
+      const z = side * 5.6;
+      const clump = new THREE.Group();
+      for (let f = 0; f < 3; f++) {
+        const stem = box(0.1, 0.5, 0.1, mat(0x3f7d3a));
+        stem.position.set(f * 0.5 - 0.5, 0.25, 0);
+        const head = new THREE.Mesh(
+          new THREE.SphereGeometry(0.22, 6, 6),
+          mat(flowerColors[(i + f) % flowerColors.length]),
+        );
+        head.position.set(f * 0.5 - 0.5, 0.55, 0);
+        clump.add(stem, head);
+      }
+      clump.position.set(x, 0, z);
+      this.scene.add(clump);
+    }
+    for (const bx of [-30, -18, 18, 30]) {
+      const bush = new THREE.Mesh(new THREE.SphereGeometry(1.1, 7, 6), mat(0x55a24f));
+      bush.position.set(bx, 0.7, -5.4);
+      bush.castShadow = true;
+      this.scene.add(bush);
+    }
+    for (const lx of [-40, -14, 14, 40]) {
+      for (const lz of [-4.6, 4.6]) {
+        const pole = box(0.18, 3.4, 0.18, mat(0x3d4450, { metalness: 0.4 }));
+        pole.position.set(lx, 1.7, lz);
+        const lampHead = new THREE.Mesh(
+          new THREE.SphereGeometry(0.3, 8, 8),
+          new THREE.MeshStandardMaterial({ color: 0xfff1c4, emissive: 0xffe9a8, emissiveIntensity: 0.7 }),
+        );
+        lampHead.position.set(lx, 3.55, lz);
+        this.scene.add(pole, lampHead);
+      }
     }
 
     // plot markers
@@ -726,61 +974,6 @@ export class Engine implements EngineApi {
     this.player = g;
   }
 
-  setInputEnabled(v: boolean) {
-    this.inputEnabled = v;
-    if (!v) this.keys.clear();
-  }
-
-  private plotPos(id: number): { x: number; z: number } {
-    return PLOT_POSITIONS.find((d) => d.id === id)!;
-  }
-
-  // ── proximity / interaction ──────────────────────────────────────────────
-  private updateProximity() {
-    if (!this.player) return;
-    const p = this.player.position;
-    let best: NearInfo | null = null;
-    let bestD = Infinity;
-    for (const st of this.plotState) {
-      const def = this.plotPos(st.id);
-      const d = Math.hypot(p.x - def.x, p.z - def.z);
-      if (d >= CONFIG.interactRange || d >= bestD) continue;
-      best = !st.type
-        ? { kind: 'plot', plotId: st.id, label: `🗺️ Empty Plot ${st.id + 1} — press E to claim` }
-        : st.done
-          ? { kind: 'done', plotId: st.id, label: `${BUILDING_DEFS[st.type].icon} ${BUILDING_DEFS[st.type].name} — press E for details` }
-          : { kind: 'site', plotId: st.id, label: `${BUILDING_DEFS[st.type].icon} Building ${BUILDING_DEFS[st.type].name} — press E to place blocks` };
-      bestD = d;
-    }
-    const ds = Math.hypot(p.x - STORE_POS.x, p.z - STORE_POS.z);
-    if (ds < CONFIG.storeRange && ds < bestD) {
-      best = { kind: 'store', label: '🏪 Blockville Store — press E to stake & shop' };
-    }
-    const same = (a: NearInfo | null, b: NearInfo | null) =>
-      a?.kind === b?.kind && a?.plotId === b?.plotId;
-    if (!same(best, this.nearInfo)) {
-      this.nearInfo = best;
-      this.onNear(best);
-    }
-    // highlight the nearest empty plot / site marker
-    for (const [id, v] of this.plotVisuals) {
-      if (!v.marker) continue;
-      const active = best?.plotId === id && (best.kind === 'plot' || best.kind === 'site');
-      const m = v.marker.material as THREE.MeshBasicMaterial;
-      m.color.setHex(active ? 0xffe08a : 0xffffff);
-      m.opacity = active ? 0.5 : 0.25;
-    }
-  }
-
-  private interact() {
-    const n = this.nearInfo;
-    if (!n) return;
-    if (n.kind === 'store') this.onStoreClick();
-    else if (n.kind === 'plot') this.onPlotClick(n.plotId!);
-    else if (n.kind === 'site') this.onBuildClick(n.plotId!);
-    else if (n.kind === 'done') this.onBuildingClick(n.plotId!);
-  }
-
   private makeStore(): THREE.Group {
     const g = new THREE.Group();
     const body = box(9, 4.4, 7, mat(0xd8452f));
@@ -818,10 +1011,14 @@ export class Engine implements EngineApi {
     for (const p of plots) {
       const v = this.plotVisuals.get(p.id);
       if (!v) continue;
-      if (p.type && !v.site && !v.building) this.startSite(p, v);
+      // a plot can arrive already finished (community buildings, purchased
+      // plots) or as an empty claim — build whichever visual is missing
+      if (p.type && !v.site && !v.building) {
+        if (p.done) this.finishBuilding(p, v);
+        else this.startSite(p, v);
+      }
       if (p.type && v.site && !p.done) this.updateStack(p, v);
       if (p.done && v.site && !v.building) this.finishBuilding(p, v);
-      if (p.done && v.building && v.builtLevel !== p.level) this.finishBuilding(p, v);
       if (v.marker) v.marker.visible = !p.type;
     }
     this.plotState = plots;
@@ -902,10 +1099,6 @@ export class Engine implements EngineApi {
       v.site = undefined;
       v.stackBlocks = [];
     }
-    if (v.building) {
-      this.scene.remove(v.building);
-      v.building = undefined;
-    }
     const mesh = buildMesh(p.type!, p.level);
     mesh.position.set(def.x, 0, def.z);
     // face the road
@@ -913,32 +1106,12 @@ export class Engine implements EngineApi {
     mesh.scale.setScalar(0.01);
     this.scene.add(mesh);
     v.building = mesh;
-    v.builtLevel = p.level;
     v.popT = 0;
-  }
-
-  upgradePlot(id: number) {
-    const p = this.plotState[id];
-    const v = this.plotVisuals.get(id);
-    if (p && p.done && p.type && v) this.finishBuilding(p, v);
   }
 
   // ── interaction ─────────────────────────────────────────────────────────
   private bindEvents() {
     const dom = this.renderer.domElement;
-    // keyboard: WASD/arrows to walk, E to interact
-    window.addEventListener('keydown', (e) => {
-      const t = e.target as HTMLElement | null;
-      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA')) return;
-      const k = e.key.toLowerCase();
-      if (k === 'e' && this.inputEnabled && !e.repeat) this.interact();
-      if (['w', 'a', 's', 'd', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright'].includes(k)) {
-        this.keys.add(k);
-      }
-    });
-    window.addEventListener('keyup', (e) => this.keys.delete(e.key.toLowerCase()));
-    window.addEventListener('blur', () => this.keys.clear());
-
     let downAt = 0;
     dom.addEventListener('pointerdown', () => (downAt = performance.now()));
     dom.addEventListener('pointerup', (e) => {
@@ -954,24 +1127,13 @@ export class Engine implements EngineApi {
         let o: THREE.Object3D | null = h.object;
         while (o && !(this.clickTargets.has(o.uuid) || o === this.storeClickPlane)) o = o.parent;
         if (o === this.storeClickPlane) {
-          if (this.player && Math.hypot(this.player.position.x - STORE_POS.x, this.player.position.z - STORE_POS.z) > CONFIG.storeRange + 3) {
-            this.onHint('🚶 Walk closer to enter the store');
-          } else {
-            this.onStoreClick();
-          }
+          this.onStoreClick();
           return;
         }
         if (o) {
           const id = this.clickTargets.get(o.uuid)!;
           const st = this.plotState[id];
-          const def = this.plotPos(id);
-          const d = this.player ? Math.hypot(this.player.position.x - def.x, this.player.position.z - def.z) : 0;
-          if (d > CONFIG.interactRange + 3) {
-            this.onHint('🚶 Walk closer to interact');
-            return;
-          }
-          if (st && st.type && st.done) this.onBuildingClick(id);
-          else if (st && st.type && !st.done) this.onBuildClick(id);
+          if (st && st.type && !st.done) this.onBuildClick(id);
           else if (!st?.type) this.onPlotClick(id);
           return;
         }
@@ -990,17 +1152,47 @@ export class Engine implements EngineApi {
 
   // ── NPCs ────────────────────────────────────────────────────────────────
   private makeNpcMesh(look?: PlayerLook): THREE.Group {
-    return buildCharacter(look);
+    const g = new THREE.Group();
+    const shirt = look
+      ? new THREE.Color(look.shirt).getHex()
+      : NPC_COLORS[randInt(0, NPC_COLORS.length - 1)];
+    const skin = look ? look.skin : ['#f5d5b5', '#f0c8a0', '#c98850', '#8d5a3a'][randInt(0, 3)];
+    const face: FaceType = look ? look.face : NPC_FACES[randInt(0, NPC_FACES.length - 1)];
+    const hat: HatType = look ? look.hat : NPC_HATS[randInt(0, NPC_HATS.length - 1)];
+    const legL = box(0.28, 0.7, 0.28, mat(0x35415c));
+    legL.position.set(-0.2, 0.35, 0);
+    const legR = legL.clone();
+    legR.position.x = 0.2;
+    const body = box(0.85, 1.0, 0.5, mat(shirt));
+    body.position.y = 1.2;
+    const armL = box(0.2, 0.85, 0.24, mat(shirt));
+    armL.position.set(-0.55, 1.25, 0);
+    const armR = armL.clone();
+    armR.position.x = 0.55;
+    // head with a real face on the front (+Z), plain skin on the other sides
+    const skinMat = mat(new THREE.Color(skin).getHex());
+    const faceMat = new THREE.MeshStandardMaterial({ map: faceTexture(face, skin), roughness: 0.85 });
+    const head = new THREE.Mesh(
+      new THREE.BoxGeometry(0.75, 0.75, 0.75),
+      [skinMat, skinMat, skinMat, skinMat, faceMat, skinMat],
+    );
+    head.castShadow = true;
+    head.position.y = 2.08;
+    const hair = box(0.78, 0.2, 0.78, mat(0x3a2e26));
+    hair.position.y = 2.46;
+    g.add(legL, legR, body, armL, armR, head, hair);
+    const h = hatMesh(hat);
+    if (h) {
+      h.position.y = 2.56;
+      g.add(h);
+    }
+    (g as any).legs = [legL, legR];
+    return g;
   }
+
   setLook(look: PlayerLook) {
-    const pos = this.player?.position.clone();
-    const rot = this.player?.rotation.y ?? 0;
     this.playerLook = look;
     this.spawnPlayer();
-    if (this.player && pos) {
-      this.player.position.copy(pos);
-      this.player.rotation.y = rot;
-    }
   }
 
   // world -> CSS pixel position (used by dev tooling and tests)
@@ -1018,24 +1210,22 @@ export class Engine implements EngineApi {
     this.camera.position.copy(this.controls.target).addScaledVector(dir, dist);
   }
 
-  // dev/testing: current player world position
-  playerPos(): { x: number; z: number } {
-    return this.player ? { x: this.player.position.x, z: this.player.position.z } : { x: 0, z: 0 };
-  }
-
   private spawnVisit() {
     const done = this.plotState.filter((p) => p.done && p.type);
     if (done.length === 0) return;
-    const target = done[randInt(0, done.length - 1)];
+    // Visitors favour the player's own buildings (~40% of visits) so the
+    // core loop — build it, people come, fees flow — stays front and centre.
+    const mine = done.filter((p) => p.owner === 'you');
+    const target =
+      mine.length && Math.random() < 0.4 ? mine[randInt(0, mine.length - 1)] : done[randInt(0, done.length - 1)];
     const def = PLOT_POSITIONS.find((d) => d.id === target.id)!;
     // entrance point just in front of the building (toward the road)
     const entrance = new THREE.Vector3(def.x, 0, def.side === 'north' ? def.z + 4.6 : def.z - 4.6);
-    // spawn on the road just outside the camera view so walks feel natural but short
-    const laneZ = entrance.z > 0 ? 3.2 : -3.2;
+    // spawn along the same building row so walks stay on the frontage
     const spawn = new THREE.Vector3(
       def.x + (Math.random() < 0.5 ? -1 : 1) * (20 + Math.random() * 14),
       0,
-      laneZ,
+      entrance.z,
     );
     const mesh = this.makeNpcMesh();
     mesh.position.copy(spawn);
@@ -1154,8 +1344,10 @@ export class Engine implements EngineApi {
             if (n.building) {
               n.state = 'dwell';
               this.showBubble(n, pickActivity(n.building));
-              const lvl = (n.plotId !== undefined && this.plotState[n.plotId]?.level) || 1;
-              this.requestReward(n.building, lvl);
+              // only the player's own buildings pay them fees — resident
+              // buildings are visual flavour for the town economy
+              const plot = this.plotState.find((q) => q.id === n.plotId);
+              if (plot?.owner === 'you') this.requestReward(n.building);
             } else {
               this.removeNpc(n, i); // wanderer reached map edge
               this.wanderers = Math.max(0, this.wanderers - 1);
@@ -1202,71 +1394,15 @@ export class Engine implements EngineApi {
       }
     }
 
-    // ── player movement (camera-relative WASD) ─────────────────────────────
-    const pl = this.player;
-    if (pl) {
-      if (this.inputEnabled) {
-        const fwd = new THREE.Vector3().subVectors(this.controls.target, this.camera.position);
-        fwd.y = 0;
-        if (fwd.lengthSq() < 0.001) fwd.set(0, 0, -1);
-        fwd.normalize();
-        const right = new THREE.Vector3(-fwd.z, 0, fwd.x);
-        const move = new THREE.Vector3();
-        const k = this.keys;
-        if (k.has('w') || k.has('arrowup')) move.add(fwd);
-        if (k.has('s') || k.has('arrowdown')) move.sub(fwd);
-        if (k.has('d') || k.has('arrowright')) move.add(right);
-        if (k.has('a') || k.has('arrowleft')) move.sub(right);
-        if (move.lengthSq() > 0) {
-          move.normalize();
-          pl.position.addScaledVector(move, CONFIG.playerSpeed * dt);
-          // face walking direction
-          pl.rotation.y = Math.atan2(move.x, move.z);
-          // walk animation
-          const legs: THREE.Mesh[] = (pl as any).legs ?? [];
-          pl.userData.phase = (pl.userData.phase ?? 0) + dt * 10;
-          const sw = Math.sin(pl.userData.phase) * 0.55;
-          if (legs.length === 2) {
-            legs[0].rotation.x = sw;
-            legs[1].rotation.x = -sw;
-          }
-          pl.position.y = Math.abs(Math.sin(pl.userData.phase)) * 0.07;
-        } else {
-          const legs: THREE.Mesh[] = (pl as any).legs ?? [];
-          if (legs.length === 2) {
-            legs[0].rotation.x *= 0.8;
-            legs[1].rotation.x *= 0.8;
-          }
-          pl.position.y *= 0.8;
-        }
-      }
-      // keep the player inside the playable area
-      pl.position.x = Math.max(-55, Math.min(55, pl.position.x));
-      pl.position.z = Math.max(-38, Math.min(38, pl.position.z));
-      // simple push-out collision vs the store and completed buildings
-      const colliders: [number, number, number][] = [[STORE_POS.x, STORE_POS.z, 6.8]];
-      for (const st of this.plotState) {
-        if (!st.done) continue;
-        const def = this.plotPos(st.id);
-        colliders.push([def.x, def.z, 5.4]);
-      }
-      for (const [cx, cz, r] of colliders) {
-        const dx = pl.position.x - cx;
-        const dz = pl.position.z - cz;
-        const d = Math.hypot(dx, dz);
-        if (d < r && d > 0.001) {
-          pl.position.x = cx + (dx / d) * r;
-          pl.position.z = cz + (dz / d) * r;
-        }
-      }
+    // your resident idles by the store — a gentle breathing bob
+    if (this.player) {
+      this.player.position.y = Math.abs(Math.sin(this.clock.elapsedTime * 1.6)) * 0.06;
+    }
 
-      // ── camera follows the player, orbit stays free ──────────────────────
-      const head = new THREE.Vector3(pl.position.x, 2.4, pl.position.z);
-      const prevTarget = this.controls.target.clone();
-      this.controls.target.lerp(head, 1 - Math.pow(0.0005, dt));
-      this.camera.position.add(this.controls.target.clone().sub(prevTarget));
-
-      this.updateProximity();
+    // clouds drift lazily across the sky
+    for (const cl of this.clouds) {
+      cl.position.x += dt * 0.6;
+      if (cl.position.x > 190) cl.position.x = -190;
     }
 
     this.controls.update();
