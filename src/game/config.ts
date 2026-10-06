@@ -50,6 +50,20 @@ export const CONFIG = {
   maxNpcs: 12,               // hard cap — keep it light
   bubbleTimeMin: 1.5,        // seconds a chat bubble stays visible
   bubbleTimeMax: 3.0,
+
+  // ── walking & interaction (third-person resident) ──
+  walkSpeed: 7.5,            // units per second with WASD held
+  interactRadius: 10.5,      // how close you must walk to claim / build on a plot
+  worldBounds: 62,           // soft map edge for the resident
+
+  // ── building upgrades (demo SOL — real wallet arrives with the backend) ──
+  // Index 0 upgrades Level 1 → 2, etc. Level 4 is the max.
+  upgrades: {
+    solCosts: [0.1, 0.25, 0.5] as const,           // SOL per upgrade tier
+    yieldMult: [1, 1.5, 2.25, 3.5] as const,       // fee yield multiplier per level
+    maxLevel: 4,
+  },
+  demoSol: 2,                // demo SOL balance so upgrades are testable
 } as const;
 
 // ── character customisation ────────────────────────────────────────────────

@@ -55,6 +55,7 @@ interface State {
   mode: 'demo' | 'wallet' | null;
   onboarded: boolean;      // staking modal dismissed
   balance: number;         // demo $BLOCKVILLE wallet balance
+  sol: number;             // demo SOL balance for building upgrades
   staked: number;
   blocks: number;
   builder: boolean;
@@ -70,7 +71,9 @@ interface State {
   customiseOpen: boolean;
   treasury: { balance: number; ledger: FeedItem[] };
   treasuryOpen: boolean;
+  stakeMoreOpen: boolean;
   lastDistribution: { total: number; yourShare: number } | null;
+  nearPlot: number | null;     // plot the resident is standing next to
 }
 
 type Action =
@@ -88,12 +91,15 @@ type Action =
   | { t: 'simList'; plot: number; price: number; seller: string }
   | { t: 'simBuy'; id: number }
   | { t: 'buyItem'; item: string }
+  | { t: 'upgrade'; plot: number }
   | { t: 'setTreasuryOpen'; open: boolean }
+  | { t: 'setStakeMoreOpen'; open: boolean }
   | { t: 'treasuryIn'; amount: number; label: string; detail: string }
   | { t: 'treasuryDistribute'; total: number; yourShare: number }
   | { t: 'setLook'; look: PlayerLook }
   | { t: 'setStoreOpen'; open: boolean }
   | { t: 'setCustomiseOpen'; open: boolean }
+  | { t: 'setNearPlot'; plot: number | null }
   | { t: 'npcReward'; building: BuildingType; amount: number }
   | { t: 'npcRewardDirect'; amount: number }
   | { t: 'feed'; icon: string; text: string; detail: string }
@@ -129,6 +135,7 @@ const initial: State = {
   mode: null,
   onboarded: false,
   balance: 60000, // demo wallet balance so the 20K stake is testable
+  sol: CONFIG.demoSol,
   staked: 0,
   blocks: 0,
   builder: false,
@@ -144,7 +151,9 @@ const initial: State = {
   customiseOpen: false,
   treasury: { balance: 0, ledger: [] },
   treasuryOpen: false,
+  stakeMoreOpen: false,
   lastDistribution: null,
+  nearPlot: null,
 };
 
 function reducer(s: State, a: Action): State {
@@ -258,6 +267,48 @@ function reducer(s: State, a: Action): State {
     }
     case 'selectPlot':
       return { ...s, selectedPlot: a.plot, storeOpen: a.plot === null ? s.storeOpen : false };
+    case 'setNearPlot':
+      if (s.nearPlot === a.plot) return s;
+      return { ...s, nearPlot: a.plot };
+    case 'setStakeMoreOpen':
+      return { ...s, stakeMoreOpen: a.open };
+    case 'upgrade': {
+      const plot = s.plots.find((p) => p.id === a.plot);
+      if (!plot || plot.owner !== 'you' || !plot.done || !plot.type) return s;
+      if (plot.level >= CONFIG.upgrades.maxLevel) return s;
+      const cost = CONFIG.upgrades.solCosts[plot.level - 1];
+      if (s.sol < cost) return s;
+      const level = plot.level + 1;
+      const mult = CONFIG.upgrades.yieldMult[level - 1];
+      const def = BUILDING_DEFS[plot.type];
+      return {
+        ...s,
+        sol: Math.round((s.sol - cost) * 100) / 100,
+        plots: s.plots.map((p) => (p.id === a.plot ? { ...p, level } : p)),
+        treasury: {
+          ...s.treasury,
+          ledger: [
+            {
+              id: nextId(),
+              icon: '⬆️',
+              text: `${def.name} upgraded to Level ${level}`,
+              detail: `${cost} SOL upgrade fee received (demo) — funds fee distributions`,
+            },
+            ...s.treasury.ledger,
+          ].slice(0, 8),
+        },
+        feed: [
+          {
+            id: nextId(),
+            icon: '⬆️',
+            text: `${def.name} is now Level ${level}`,
+            detail: `Fee yield ×${mult} — paid with ${cost} SOL (demo)`,
+          },
+          ...s.feed,
+        ].slice(0, 8),
+        toasts: [...s.toasts, { id: nextId(), text: `⬆️ ${def.name} → Level ${level} · fees ×${mult}` }],
+      };
+    }
     case 'setMarketOpen':
       return { ...s, marketOpen: a.open, selectedPlot: a.open ? null : s.selectedPlot };
     case 'listPlot': {
@@ -480,6 +531,8 @@ function reducer(s: State, a: Action): State {
 export interface EngineApi {
   sync: (plots: Plot[], npcTarget: number) => void;
   setLook: (look: PlayerLook) => void;
+  setInputEnabled: (v: boolean) => void;
+  playerPos: () => { x: number; z: number };
   dispose: () => void;
 }
 
@@ -594,9 +647,11 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
   // The engine lives in App via a ref set by GameCanvas; feed reward events through here.
   const api = useMemo(
     () => ({
-      requestReward: (building: BuildingType) => {
+      requestReward: (building: BuildingType, level: number) => {
         if (Math.random() < CONFIG.feeChance) {
-          const amt = CONFIG.feeMin + Math.random() * (CONFIG.feeMax - CONFIG.feeMin);
+          // upgrades multiply the fee yield of the building that earned them
+          const base = CONFIG.feeMin + Math.random() * (CONFIG.feeMax - CONFIG.feeMin);
+          const amt = base * CONFIG.upgrades.yieldMult[Math.max(0, Math.min(CONFIG.upgrades.maxLevel, level) - 1)];
           dispatch({ t: 'npcReward', building, amount: Math.round(amt * 100) / 100 });
         }
       },
@@ -625,7 +680,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
 const engineBridgeContext = createContext<{
   setEngine: (e: EngineApi | null) => void;
   getEngine: () => EngineApi | null;
-  rewardBridge: () => { requestReward: (b: BuildingType) => void };
+  rewardBridge: () => { requestReward: (b: BuildingType, level: number) => void };
 } | null>(null);
 
 export function useEngineBridge() {

@@ -18,6 +18,8 @@ import type { EngineApi, Plot } from './state';
 const mat = (color: number | string, opts: THREE.MeshStandardMaterialParameters = {}) =>
   new THREE.MeshStandardMaterial({ color, roughness: 0.85, metalness: 0.05, ...opts });
 
+const UP = new THREE.Vector3(0, 1, 0);
+
 const box = (w: number, h: number, d: number, m: THREE.Material) => {
   const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), m);
   mesh.castShadow = true;
@@ -643,6 +645,55 @@ const NPC_COLORS = [0xe0574f, 0x4f8fe0, 0x53b56d, 0xc99a3c, 0x8e6fc1, 0xd97fa8, 
 const NPC_HATS: HatType[] = ['none', 'none', 'none', 'cap', 'beanie'];
 const NPC_FACES: FaceType[] = ['smile', 'grin', 'chill', 'wow'];
 
+// ── characters ─────────────────────────────────────────────────────────────
+// Exported so the customise-menu preview renders the exact same mesh the
+// player walks around with. Limb pivots sit at hip/shoulder for walk cycles.
+export function makeCharacterMesh(look?: PlayerLook): THREE.Group {
+  const g = new THREE.Group();
+  const shirt = look
+    ? new THREE.Color(look.shirt).getHex()
+    : NPC_COLORS[randInt(0, NPC_COLORS.length - 1)];
+  const skin = look ? look.skin : ['#f5d5b5', '#f0c8a0', '#c98850', '#8d5a3a'][randInt(0, 3)];
+  const face: FaceType = look ? look.face : NPC_FACES[randInt(0, NPC_FACES.length - 1)];
+  const hat: HatType = look ? look.hat : NPC_HATS[randInt(0, NPC_HATS.length - 1)];
+  const legGeo = new THREE.BoxGeometry(0.28, 0.7, 0.28);
+  legGeo.translate(0, -0.35, 0);            // pivot at the hip
+  const legL = new THREE.Mesh(legGeo, mat(0x35415c));
+  legL.position.set(-0.2, 0.7, 0);
+  legL.castShadow = true;
+  const legR = new THREE.Mesh(legGeo, mat(0x35415c));
+  legR.position.set(0.2, 0.7, 0);
+  legR.castShadow = true;
+  const body = box(0.85, 1.0, 0.5, mat(shirt));
+  body.position.y = 1.2;
+  const armGeo = new THREE.BoxGeometry(0.2, 0.85, 0.24);
+  armGeo.translate(0, -0.425, 0);           // pivot at the shoulder
+  const armL = new THREE.Mesh(armGeo, mat(shirt));
+  armL.position.set(-0.55, 1.68, 0);
+  const armR = new THREE.Mesh(armGeo, mat(shirt));
+  armR.position.set(0.55, 1.68, 0);
+  // head with a real face on the front (+Z), plain skin on the other sides
+  const skinMat = mat(new THREE.Color(skin).getHex());
+  const faceMat = new THREE.MeshStandardMaterial({ map: faceTexture(face, skin), roughness: 0.85 });
+  const head = new THREE.Mesh(
+    new THREE.BoxGeometry(0.75, 0.75, 0.75),
+    [skinMat, skinMat, skinMat, skinMat, faceMat, skinMat],
+  );
+  head.castShadow = true;
+  head.position.y = 2.08;
+  const hair = box(0.78, 0.2, 0.78, mat(0x3a2e26));
+  hair.position.y = 2.46;
+  g.add(legL, legR, body, armL, armR, head, hair);
+  const h = hatMesh(hat);
+  if (h) {
+    h.position.y = 2.56;
+    g.add(h);
+  }
+  g.userData.legs = [legL, legR];
+  g.userData.arms = [armL, armR];
+  return g;
+}
+
 interface Npc {
   group: THREE.Group;
   state: 'walk_in' | 'dwell' | 'walk_out';
@@ -664,6 +715,7 @@ interface PlotVisual {
   stackBlocks: THREE.Mesh[];
   building?: THREE.Group;
   popT?: number;              // scale-in animation timer
+  buildLevel?: number;        // level the current mesh was built for
 }
 
 export class Engine implements EngineApi {
@@ -689,10 +741,17 @@ export class Engine implements EngineApi {
   private onPlotClick: (id: number) => void;
   private onBuildClick: (id: number) => void;
   private onStoreClick: () => void;
-  private requestReward: (b: BuildingType) => void;
+  private requestReward: (b: BuildingType, level: number) => void;
+  private onNearby: (id: number | null) => void;
+  private onTooFar: () => void;
   private storeClickPlane?: THREE.Mesh;
   private player?: THREE.Group;
   private playerLook: PlayerLook;
+  private keys = new Set<string>();
+  private inputEnabled = true;
+  private nearbyId: number | null = null;
+  private nearbyClock = 0;
+  private plotPos = new Map<number, { x: number; z: number }>();
 
   constructor(
     private container: HTMLDivElement,
@@ -700,7 +759,9 @@ export class Engine implements EngineApi {
       onPlotClick: (id: number) => void;
       onBuildClick: (id: number) => void;
       onStoreClick: () => void;
-      requestReward: (b: BuildingType) => void;
+      requestReward: (b: BuildingType, level: number) => void;
+      onNearby: (id: number | null) => void;
+      onTooFar: () => void;
     },
     look: PlayerLook,
   ) {
@@ -708,6 +769,8 @@ export class Engine implements EngineApi {
     this.onBuildClick = cb.onBuildClick;
     this.onStoreClick = cb.onStoreClick;
     this.requestReward = cb.requestReward;
+    this.onNearby = cb.onNearby;
+    this.onTooFar = cb.onTooFar;
     this.playerLook = look;
 
     this.renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'low-power' });
@@ -731,12 +794,18 @@ export class Engine implements EngineApi {
     this.controls.enableDamping = true;
     this.controls.dampingFactor = 0.08;
     this.controls.maxPolarAngle = 1.32;
-    this.controls.minDistance = 14;
+    this.controls.minDistance = 8;
     this.controls.maxDistance = 170;
     this.controls.mouseButtons = { LEFT: THREE.MOUSE.ROTATE, MIDDLE: THREE.MOUSE.DOLLY, RIGHT: THREE.MOUSE.PAN };
 
     this.buildWorld();
     this.bindEvents();
+    // third-person start: camera sits behind the resident by the store
+    if (this.player) {
+      this.controls.target.copy(this.player.position);
+      this.controls.target.y = 1.3;
+      this.camera.position.set(this.player.position.x, 14, this.player.position.z + 16);
+    }
     this.loop();
   }
 
@@ -927,6 +996,7 @@ export class Engine implements EngineApi {
 
     // plot markers
     for (const p of PLOT_POSITIONS) {
+      this.plotPos.set(p.id, { x: p.x, z: p.z });
       // invisible click plane — one per plot, sized to leave a clear gap between plots
       const clickPlane = new THREE.Mesh(
         new THREE.PlaneGeometry(8, 8),
@@ -1019,9 +1089,24 @@ export class Engine implements EngineApi {
       }
       if (p.type && v.site && !p.done) this.updateStack(p, v);
       if (p.done && v.site && !v.building) this.finishBuilding(p, v);
+      if (p.done && v.building && v.buildLevel !== p.level) this.rebuildLevel(p, v);
       if (v.marker) v.marker.visible = !p.type;
     }
     this.plotState = plots;
+  }
+
+  // swap in the mesh for a newly upgraded level, with the same rise-in feel
+  private rebuildLevel(p: Plot, v: PlotVisual) {
+    if (v.building) this.scene.remove(v.building);
+    const def = PLOT_POSITIONS.find((d) => d.id === p.id)!;
+    const mesh = buildMesh(p.type!, p.level);
+    mesh.position.set(def.x, 0, def.z);
+    mesh.rotation.y = def.side === 'north' ? 0 : Math.PI;
+    mesh.scale.setScalar(0.01);
+    this.scene.add(mesh);
+    v.building = mesh;
+    v.buildLevel = p.level;
+    v.popT = 0;
   }
 
   private startSite(p: Plot, v: PlotVisual) {
@@ -1074,6 +1159,7 @@ export class Engine implements EngineApi {
   }
 
   private updateStack(p: Plot, v: PlotVisual) {
+    let queued = 0;
     while (v.stackBlocks.length < p.progress && v.site) {
       const i = v.stackBlocks.length;
       const pos = this.stackPos(i);
@@ -1082,13 +1168,16 @@ export class Engine implements EngineApi {
       const color = course % 2 ? 0xd97b3f : 0xe8b04c;
       const b = box(1.05, 0.8, 1.05, mat(color));
       const target = pos.clone();
-      b.position.set(target.x, target.y + 4.5, target.z); // drop in from above
-      b.rotation.y = (Math.random() - 0.5) * 0.25;        // slight tilt while falling
+      b.position.set(target.x, target.y + 3.2, target.z); // drop in from above
+      b.rotation.y = (Math.random() - 0.5) * 0.12;        // slight tilt while falling
+      b.visible = false;                                   // appears when its turn comes
       b.userData.dropT = 0;
+      b.userData.delay = queued * 0.14;                    // stagger a queued batch
       b.userData.targetY = target.y;
       b.userData.landed = false;
       v.site.add(b);
       v.stackBlocks.push(b);
+      queued++;
     }
   }
 
@@ -1106,6 +1195,7 @@ export class Engine implements EngineApi {
     mesh.scale.setScalar(0.01);
     this.scene.add(mesh);
     v.building = mesh;
+    v.buildLevel = p.level;
     v.popT = 0;
   }
 
@@ -1133,13 +1223,71 @@ export class Engine implements EngineApi {
         if (o) {
           const id = this.clickTargets.get(o.uuid)!;
           const st = this.plotState[id];
+          // you have to walk up to a plot to interact with it
+          if (!this.plotPos.has(id) || this.nearPlotDist(id) > CONFIG.interactRadius) {
+            this.onTooFar();
+            return;
+          }
           if (st && st.type && !st.done) this.onBuildClick(id);
-          else if (!st?.type) this.onPlotClick(id);
+          else if (!st?.type || st.owner === 'you') this.onPlotClick(id);
           return;
         }
       }
     });
+    // WASD / arrows walk the resident — camera-relative, ignored while typing
+    const walkKey = (k: string) =>
+      ['w', 'a', 's', 'd', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright'].includes(k);
+    window.addEventListener('keydown', (e) => {
+      const t = e.target;
+      const typing =
+        t instanceof HTMLElement &&
+        (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable);
+      if (typing || !this.inputEnabled || e.repeat) return;
+      const k = e.key.toLowerCase();
+      if (walkKey(k)) {
+        this.keys.add(k);
+        e.preventDefault();
+      }
+    });
+    window.addEventListener('keyup', (e) => this.keys.delete(e.key.toLowerCase()));
+    window.addEventListener('blur', () => this.keys.clear());
     window.addEventListener('resize', this.onResize);
+  }
+
+  // modals pause movement so keys never fight with form inputs
+  setInputEnabled(v: boolean) {
+    this.inputEnabled = v;
+    if (!v) this.keys.clear();
+  }
+
+  private nearPlotDist(id: number): number {
+    if (!this.player) return Infinity;
+    const p = this.plotPos.get(id);
+    if (!p) return Infinity;
+    const dx = this.player.position.x - p.x;
+    const dz = this.player.position.z - p.z;
+    return Math.hypot(dx, dz);
+  }
+
+  // keep the resident out of solid buildings (sites stay walkable)
+  private resolveCollisions(pos: THREE.Vector3) {
+    const pad = 0.45;
+    const check = (cx: number, cz: number, hw: number, hd: number) => {
+      const dx = pos.x - cx;
+      const dz = pos.z - cz;
+      const px = hw + pad - Math.abs(dx);
+      const pz = hd + pad - Math.abs(dz);
+      if (px > 0 && pz > 0) {
+        if (px < pz) pos.x = cx + Math.sign(dx || 1) * (hw + pad);
+        else pos.z = cz + Math.sign(dz || 1) * (hd + pad);
+      }
+    };
+    check(STORE_POS.x, STORE_POS.z, 4.8, 3.8);
+    for (const p of this.plotState) {
+      if (!p.done || !p.type) continue;
+      const d = this.plotPos.get(p.id);
+      if (d) check(d.x, d.z, 4.3, 4.3);
+    }
   }
 
   private onResize = () => {
@@ -1152,47 +1300,19 @@ export class Engine implements EngineApi {
 
   // ── NPCs ────────────────────────────────────────────────────────────────
   private makeNpcMesh(look?: PlayerLook): THREE.Group {
-    const g = new THREE.Group();
-    const shirt = look
-      ? new THREE.Color(look.shirt).getHex()
-      : NPC_COLORS[randInt(0, NPC_COLORS.length - 1)];
-    const skin = look ? look.skin : ['#f5d5b5', '#f0c8a0', '#c98850', '#8d5a3a'][randInt(0, 3)];
-    const face: FaceType = look ? look.face : NPC_FACES[randInt(0, NPC_FACES.length - 1)];
-    const hat: HatType = look ? look.hat : NPC_HATS[randInt(0, NPC_HATS.length - 1)];
-    const legL = box(0.28, 0.7, 0.28, mat(0x35415c));
-    legL.position.set(-0.2, 0.35, 0);
-    const legR = legL.clone();
-    legR.position.x = 0.2;
-    const body = box(0.85, 1.0, 0.5, mat(shirt));
-    body.position.y = 1.2;
-    const armL = box(0.2, 0.85, 0.24, mat(shirt));
-    armL.position.set(-0.55, 1.25, 0);
-    const armR = armL.clone();
-    armR.position.x = 0.55;
-    // head with a real face on the front (+Z), plain skin on the other sides
-    const skinMat = mat(new THREE.Color(skin).getHex());
-    const faceMat = new THREE.MeshStandardMaterial({ map: faceTexture(face, skin), roughness: 0.85 });
-    const head = new THREE.Mesh(
-      new THREE.BoxGeometry(0.75, 0.75, 0.75),
-      [skinMat, skinMat, skinMat, skinMat, faceMat, skinMat],
-    );
-    head.castShadow = true;
-    head.position.y = 2.08;
-    const hair = box(0.78, 0.2, 0.78, mat(0x3a2e26));
-    hair.position.y = 2.46;
-    g.add(legL, legR, body, armL, armR, head, hair);
-    const h = hatMesh(hat);
-    if (h) {
-      h.position.y = 2.56;
-      g.add(h);
-    }
-    (g as any).legs = [legL, legR];
-    return g;
+    return makeCharacterMesh(look);
   }
 
   setLook(look: PlayerLook) {
     this.playerLook = look;
+    // keep the resident where they were standing — only the look changes
+    const pos = this.player?.position.clone();
+    const rot = this.player?.rotation.y ?? 0.4;
     this.spawnPlayer();
+    if (this.player && pos) {
+      this.player.position.copy(pos);
+      this.player.rotation.y = rot;
+    }
   }
 
   // world -> CSS pixel position (used by dev tooling and tests)
@@ -1210,6 +1330,17 @@ export class Engine implements EngineApi {
     this.camera.position.copy(this.controls.target).addScaledVector(dir, dist);
   }
 
+  playerPos(): { x: number; z: number } {
+    return this.player ? { x: this.player.position.x, z: this.player.position.z } : { x: 0, z: 0 };
+  }
+
+  // dev/testing: place the resident at a world position instantly
+  teleport(x: number, z: number) {
+    if (this.player) {
+      this.player.position.set(x, 0, z);
+      this.controls.target.set(x, 1.3, z);
+    }
+  }
   private spawnVisit() {
     const done = this.plotState.filter((p) => p.done && p.type);
     if (done.length === 0) return;
@@ -1283,12 +1414,18 @@ export class Engine implements EngineApi {
     for (const [, v] of this.plotVisuals) {
       if (v.site) {
         for (const b of v.stackBlocks) {
-          const t = (b.userData.dropT = (b.userData.dropT ?? 0) + dt * 2.6);
+          // queued blocks wait their turn, then drop smoothly into place
+          if (b.userData.delay > 0) {
+            b.userData.delay -= dt;
+            b.visible = b.userData.delay <= 0;
+            if (!b.visible) continue;
+          }
+          const t = (b.userData.dropT = (b.userData.dropT ?? 0) + dt * 2.2);
           const targetY = b.userData.targetY;
           if (t < 1) {
-            // smooth ease-out fall
-            const e = 1 - Math.pow(1 - t, 3);
-            b.position.y = targetY + 4.5 * (1 - e);
+            // smooth ease-in-out fall
+            const e = t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+            b.position.y = targetY + 3.2 * (1 - e);
           } else if (!b.userData.landed) {
             b.userData.landed = true;
             b.userData.bounceT = 0;
@@ -1309,10 +1446,16 @@ export class Engine implements EngineApi {
         }
       }
       if (v.building && v.popT !== undefined && v.popT < 1) {
-        v.popT += dt * 2.2;
+        v.popT += dt * 1.7;
         const e = 1 - Math.pow(1 - Math.min(1, v.popT), 3);
-        const overshoot = 1 + Math.sin(Math.min(1, v.popT) * Math.PI) * 0.12;
+        const overshoot = 1 + Math.sin(Math.min(1, v.popT) * Math.PI) * 0.07;
         v.building.scale.setScalar(e * overshoot);
+        // rise out of the ground instead of popping out of nowhere
+        v.building.position.y = -(1 - e) * 1.4;
+        if (v.popT >= 1) {
+          v.building.scale.setScalar(1);
+          v.building.position.y = 0;
+        }
       }
     }
 
@@ -1334,7 +1477,7 @@ export class Engine implements EngineApi {
     for (let i = this.npcs.length - 1; i >= 0; i--) {
       const n = this.npcs[i];
       const g = n.group;
-      const legs: THREE.Mesh[] = (g as any).legs ?? [];
+      const legs: THREE.Mesh[] = g.userData.legs ?? [];
       if (n.state !== 'dwell') {
         const dir = n.target.clone().sub(g.position);
         dir.y = 0;
@@ -1347,7 +1490,7 @@ export class Engine implements EngineApi {
               // only the player's own buildings pay them fees — resident
               // buildings are visual flavour for the town economy
               const plot = this.plotState.find((q) => q.id === n.plotId);
-              if (plot?.owner === 'you') this.requestReward(n.building);
+              if (plot?.owner === 'you') this.requestReward(n.building, plot.level);
             } else {
               this.removeNpc(n, i); // wanderer reached map edge
               this.wanderers = Math.max(0, this.wanderers - 1);
@@ -1394,9 +1537,87 @@ export class Engine implements EngineApi {
       }
     }
 
-    // your resident idles by the store — a gentle breathing bob
+    // ── your resident: WASD walk + third-person camera follow ──
     if (this.player) {
-      this.player.position.y = Math.abs(Math.sin(this.clock.elapsedTime * 1.6)) * 0.06;
+      const p = this.player;
+      const legs: THREE.Mesh[] = p.userData.legs ?? [];
+      const arms: THREE.Mesh[] = p.userData.arms ?? [];
+      let mx = 0;
+      let mz = 0;
+      if (this.inputEnabled) {
+        const fwd =
+          (this.keys.has('w') || this.keys.has('arrowup') ? 1 : 0) -
+          (this.keys.has('s') || this.keys.has('arrowdown') ? 1 : 0);
+        const side =
+          (this.keys.has('d') || this.keys.has('arrowright') ? 1 : 0) -
+          (this.keys.has('a') || this.keys.has('arrowleft') ? 1 : 0);
+        if (fwd || side) {
+          // camera-relative: W walks away from the camera, A/D strafe
+          const view = new THREE.Vector3().subVectors(this.controls.target, this.camera.position);
+          view.y = 0;
+          view.normalize();
+          const right = new THREE.Vector3().crossVectors(view, UP).normalize();
+          const dir = view.multiplyScalar(fwd).add(right.multiplyScalar(side)).normalize();
+          mx = dir.x;
+          mz = dir.z;
+        }
+      }
+      if (mx || mz) {
+        p.position.x = THREE.MathUtils.clamp(p.position.x + mx * CONFIG.walkSpeed * dt, -CONFIG.worldBounds, CONFIG.worldBounds);
+        p.position.z = THREE.MathUtils.clamp(p.position.z + mz * CONFIG.walkSpeed * dt, -CONFIG.worldBounds, CONFIG.worldBounds);
+        this.resolveCollisions(p.position);
+        // face where you're heading, turning smoothly
+        const targetYaw = Math.atan2(mx, mz);
+        let d = targetYaw - p.rotation.y;
+        while (d > Math.PI) d -= Math.PI * 2;
+        while (d < -Math.PI) d += Math.PI * 2;
+        p.rotation.y += d * Math.min(1, dt * 12);
+        // walk cycle
+        const sw = Math.sin(this.clock.elapsedTime * 11) * 0.55;
+        if (legs.length === 2) {
+          legs[0].rotation.x = sw;
+          legs[1].rotation.x = -sw;
+        }
+        if (arms.length === 2) {
+          arms[0].rotation.x = -sw * 0.65;
+          arms[1].rotation.x = sw * 0.65;
+        }
+      } else {
+        // limbs ease back to rest, gentle idle breathing
+        for (const l of [...legs, ...arms]) l.rotation.x *= Math.max(0, 1 - dt * 10);
+        p.position.y = Math.abs(Math.sin(this.clock.elapsedTime * 1.6)) * 0.06;
+      }
+
+      // camera glides after the resident
+      const want = new THREE.Vector3(p.position.x, 1.3, p.position.z);
+      this.controls.target.lerp(want, 1 - Math.exp(-5 * dt));
+
+      // which plot is the resident close enough to interact with?
+      this.nearbyClock -= dt;
+      if (this.nearbyClock <= 0) {
+        this.nearbyClock = 0.15;
+        let best: number | null = null;
+        let bestD: number = CONFIG.interactRadius;
+        for (const p2 of this.plotState) {
+          const d = this.nearPlotDist(p2.id);
+          if (d < bestD) {
+            bestD = d;
+            best = p2.id;
+          }
+        }
+        if (best !== this.nearbyId) {
+          this.nearbyId = best;
+          this.onNearby(best);
+        }
+        // highlight the plot you're standing at
+        for (const [id, v] of this.plotVisuals) {
+          if (!v.marker) continue;
+          const near = id === best;
+          const m = v.marker.material as THREE.MeshBasicMaterial;
+          m.opacity = near ? 0.42 : 0.25;
+          m.color.set(near ? 0xffd76a : 0xffffff);
+        }
+      }
     }
 
     // clouds drift lazily across the sky

@@ -16,6 +16,7 @@ import {
 } from './game/config';
 import { GameProvider, useGame, useToastTimer, type Plot } from './game/state';
 import GameCanvas from './game/GameCanvas';
+import CharacterPreview from './game/CharacterPreview';
 
 // ── shared modal shell ─────────────────────────────────────────────────────
 function Modal({
@@ -218,7 +219,60 @@ function ClaimMenu() {
       </div>
     );
   }
-  if (plot.type) return null;
+  // your own plot: construction status, or the completed building's upgrade panel
+  if (plot.type) {
+    const def = BUILDING_DEFS[plot.type];
+    if (!plot.done) {
+      return (
+        <div className="dock panel">
+          <div className="panel-head">
+            <span>Plot {plot.id + 1} — {def.icon} {def.name} under construction</span>
+            <button className="x" onClick={() => dispatch({ t: 'selectPlot', plot: null })}>✕</button>
+          </div>
+          <p className="dock-note">
+            🧱 {plot.progress}/{def.cost} blocks placed — keep clicking the site (stand next to it) to build.
+          </p>
+        </div>
+      );
+    }
+    const mult = CONFIG.upgrades.yieldMult[plot.level - 1];
+    const maxed = plot.level >= CONFIG.upgrades.maxLevel;
+    const nextCost = maxed ? 0 : CONFIG.upgrades.solCosts[plot.level - 1];
+    const nextMult = maxed ? 0 : CONFIG.upgrades.yieldMult[plot.level];
+    return (
+      <div className="dock panel">
+        <div className="panel-head">
+          <span>Plot {plot.id + 1} — {def.icon} {def.name}</span>
+          <button className="x" onClick={() => dispatch({ t: 'selectPlot', plot: null })}>✕</button>
+        </div>
+        <div className="upgrade-row">
+          <div className="level-pips">
+            {Array.from({ length: CONFIG.upgrades.maxLevel }, (_, i) => (
+              <span key={i} className={`pip ${i < plot.level ? 'on' : ''}`} />
+            ))}
+          </div>
+          <div className="upgrade-info">Level {plot.level} · fee yield <b>×{mult}</b></div>
+        </div>
+        {maxed ? (
+          <p className="dock-note">🏆 Fully upgraded — ×{mult} fee yield is the max.</p>
+        ) : (
+          <>
+            <button
+              className="btn primary"
+              disabled={state.sol < nextCost}
+              onClick={() => dispatch({ t: 'upgrade', plot: plot.id })}
+            >
+              ⬆ Upgrade to Level {plot.level + 1} — ◎ {nextCost} SOL
+            </button>
+            <p className="dock-note subtle">
+              Raises fee yield to ×{nextMult}. Upgrade fees route to the Treasury
+              (demo SOL — the real wallet arrives with the backend rollout).
+            </p>
+          </>
+        )}
+      </div>
+    );
+  }
   const free = state.plots.filter((p) => !p.owner).length;
   const claimed = state.plots.filter((p) => p.owner === 'you').length;
   const locked = claimed >= plotAllowance(state.staked);
@@ -281,8 +335,9 @@ function CustomiseModal() {
     dispatch({ t: 'setLook', look: { ...state.look, ...patch } });
   return (
     <Modal icon="🧍" title="Customise your resident" onClose={() => dispatch({ t: 'setCustomiseOpen', open: false })}>
+      <CharacterPreview look={state.look} />
       <p className="lede">
-        This is your character standing by the store. Pick a look — change it any time from the top bar.
+        This is your resident — walk around town with <b>WASD</b>. Change the look any time from the top bar.
       </p>
       <div className="row-label">Skin</div>
       <div className="chips">
@@ -336,7 +391,7 @@ function CustomiseModal() {
         })}
       </div>
       <button className="btn primary" onClick={() => dispatch({ t: 'setCustomiseOpen', open: false })}>
-        Done — my resident is by the store
+        Done — take my resident for a walk
       </button>
     </Modal>
   );
@@ -597,10 +652,15 @@ function BuildHud() {
   if (!building || !building.type) return null;
   const def = BUILDING_DEFS[building.type];
   const pct = Math.round((building.progress / def.cost) * 100);
+  const near = state.nearPlot === building.id;
   return (
-    <div className="build-hud panel" onClick={() => dispatch({ t: 'buildClick', plot: building.id })}>
+    <div
+      className={`build-hud panel ${near ? '' : 'far'}`}
+      onClick={() => near && dispatch({ t: 'buildClick', plot: building.id })}
+    >
       <div className="build-title">
-        {def.icon} Building {def.name} — click the site (or here) to place blocks
+        {def.icon} Building {def.name} —{' '}
+        {near ? 'click the site (or here) to place blocks' : 'walk to the site to keep building'}
       </div>
       <div className="bar">
         <div className="fill" style={{ width: `${pct}%` }} />
@@ -616,7 +676,6 @@ function BuildHud() {
 function TopBar() {
   const { state, dispatch } = useGame();
   const built = state.plots.filter((p) => p.done && p.owner === 'you').length;
-  const [stakeMoreOpen, setStakeMoreOpen] = useState(false);
   return (
     <>
       <div className="topbar">
@@ -634,6 +693,13 @@ function TopBar() {
               <span className="pill-body">
                 <span className="pill-value">{state.balance.toLocaleString(undefined, { maximumFractionDigits: 2 })}</span>
                 <span className="pill-label">$BLOCKVILLE</span>
+              </span>
+            </div>
+            <div className="pill" title="Demo SOL — pays for building upgrades">
+              <span className="pill-icon">◎</span>
+              <span className="pill-body">
+                <span className="pill-value">{state.sol.toFixed(2)}</span>
+                <span className="pill-label">SOL demo</span>
               </span>
             </div>
             <div className="pill" title="Staked $BLOCKVILLE">
@@ -671,7 +737,11 @@ function TopBar() {
             <button className="mbtn" onClick={() => dispatch({ t: 'setCustomiseOpen', open: true })} title="Customise your resident">
               🧍 <span>Character</span>
             </button>
-            <button className="mbtn" onClick={() => setStakeMoreOpen(true)} title="Stake more to unlock another block of land">
+            <button
+              className="mbtn"
+              onClick={() => dispatch({ t: 'setStakeMoreOpen', open: true })}
+              title="Stake more to unlock another block of land"
+            >
               🔒 <span>Stake more</span>
             </button>
             <div className={`badge ${state.builder ? 'on' : ''}`}>{state.builder ? 'BUILDER' : 'VISITOR'}</div>
@@ -679,7 +749,7 @@ function TopBar() {
         </div>
       </div>
       <div className="demo-tag">DEMO MODE — no real wallet or on-chain rewards</div>
-      {stakeMoreOpen && <StakeMoreModal onClose={() => setStakeMoreOpen(false)} />}
+      {state.stakeMoreOpen && <StakeMoreModal onClose={() => dispatch({ t: 'setStakeMoreOpen', open: false })} />}
     </>
   );
 }
@@ -718,9 +788,19 @@ function Toasts() {
 
 function Shell() {
   const { state } = useGame();
+  // any full-screen modal pauses walking; the claim dock stays walk-friendly
+  const modalOpen =
+    state.mode === null ||
+    state.mode === 'wallet' ||
+    !state.builder ||
+    state.storeOpen ||
+    state.marketOpen ||
+    state.treasuryOpen ||
+    state.customiseOpen ||
+    state.stakeMoreOpen;
   return (
     <div className="app">
-      <GameCanvas />
+      <GameCanvas inputEnabled={!modalOpen} />
       {state.mode !== 'wallet' && <TopBar />}
       {(!state.builder || state.mode === 'wallet') && <StakeModal />}
       <ClaimMenu />

@@ -3,7 +3,7 @@ import { Engine } from './engine';
 import { CONFIG } from './config';
 import { useEngineBridge, useGame, type EngineApi, type Plot } from './state';
 
-export default function GameCanvas() {
+export default function GameCanvas({ inputEnabled = true }: { inputEnabled?: boolean }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const { state, dispatch } = useGame();
   const bridge = useEngineBridge();
@@ -18,11 +18,15 @@ export default function GameCanvas() {
     const engine = new Engine(containerRef.current, {
       onPlotClick: (id) => {
         const p = stateRef.current.plots.find((q) => q.id === id);
-        if (p && !p.type) dispatch({ t: 'selectPlot', plot: id });
+        // claim empty land, or open your own building's info/upgrade panel
+        if (p && (!p.type || p.owner === 'you')) dispatch({ t: 'selectPlot', plot: id });
       },
       onBuildClick: (id) => dispatch({ t: 'buildClick', plot: id }),
       onStoreClick: () => dispatch({ t: 'setStoreOpen', open: true }),
-      requestReward: (b) => bridge.rewardBridge().requestReward(b),
+      requestReward: (b, level) => bridge.rewardBridge().requestReward(b, level),
+      // the engine only fires these when the value changes
+      onNearby: (id) => dispatch({ t: 'setNearPlot', plot: id }),
+      onTooFar: () => dispatch({ t: 'toast', text: '🚶 Walk up to a plot to interact with it' }),
     }, stateRef.current.look);
     engineRef.current = engine;
     bridge.setEngine(engine as EngineApi);
@@ -30,6 +34,9 @@ export default function GameCanvas() {
       (window as unknown as Record<string, unknown>).__bv = {
         screenPos: (x: number, z: number) => engine.screenPos(x, z),
         camDist: (d: number) => engine.setCamDist(d),
+        playerPos: () => engine.playerPos(),
+        teleport: (x: number, z: number) => engine.teleport(x, z),
+        plots: () => Array.from((engine as unknown as { plotPos: Map<number, { x: number; z: number }> }).plotPos.entries()),
       };
     }
     return () => {
@@ -50,6 +57,11 @@ export default function GameCanvas() {
   useEffect(() => {
     engineRef.current?.setLook(state.look);
   }, [state.look]);
+
+  // pause walking while any modal is open
+  useEffect(() => {
+    engineRef.current?.setInputEnabled(inputEnabled);
+  }, [inputEnabled]);
 
   return <div className="game-canvas" ref={containerRef} data-testid="game-canvas" />;
 }

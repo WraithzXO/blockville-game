@@ -28,6 +28,13 @@ npm run build     # type-check + production build to dist/
 npm run preview   # serve the production build
 ```
 
+## Controls
+
+- **WASD / arrow keys** — walk your resident around town (camera-relative; the camera follows you).
+- **Left-drag** — orbit the camera. **Scroll** — zoom.
+- **Walk up to a plot** to claim, build on, or upgrade it — far-away clicks are rejected.
+- **Click your completed building** (standing next to it) to open its upgrade panel: 0.1 -> 0.25 -> 0.5 SOL per tier, Level 4 is the max. Each tier multiplies fee yield (x1 / x1.5 / x2.25 / x3.5). Upgrades are paid with demo SOL until the real wallet lands.
+
 ## Notes
 
 - **Demo vs real wallet:** the game runs in demo mode by default. The "Connect wallet" tab is an honest placeholder — real staking / on-chain functionality is not wired up yet, and the UI says so rather than faking transactions.
