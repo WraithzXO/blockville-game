@@ -76,6 +76,38 @@ body { font-family: var(--ui-font); overflow: hidden; background: #8fd0f0; }
   padding: 4px 8px; border-radius: 4px; pointer-events: none;
 }
 
+.stat.clickable {
+  pointer-events: auto;
+  cursor: pointer;
+  border: 1px solid rgba(232, 176, 76, 0.55);
+}
+.stat.clickable:hover { background: rgba(232, 176, 76, 0.25); }
+
+/* character customiser */
+.customise-modal { width: min(480px, 94vw); }
+.cust-row-label {
+  font-size: 11px; font-weight: 800; letter-spacing: 1px; color: #6b6250;
+  margin: 10px 0 5px;
+}
+.chip-row { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip {
+  padding: 7px 10px; border: 2px solid var(--ink); border-radius: 8px;
+  background: #fff; cursor: pointer; font-weight: 700; font-size: 13px; color: var(--ink);
+}
+.chip.swatch { width: 34px; height: 30px; padding: 0; }
+.chip.active { border-color: #b8860b; box-shadow: 0 0 0 2px rgba(232, 176, 76, 0.6); }
+.chip.locked { opacity: 0.5; cursor: not-allowed; }
+
+/* store panel */
+.store-panel {
+  position: absolute; bottom: 18px; left: 50%; transform: translateX(-50%);
+  width: min(680px, 94vw); z-index: 20;
+  background: var(--panel); border: 2px solid rgba(255,255,255,0.15);
+  border-radius: 14px; padding: 12px; color: #fff;
+}
+.store-items { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; }
+.store-balance { margin-top: 10px; font-size: 12px; font-weight: 700; color: #ffd88a; text-align: right; }
+
 /* staking modal */
 .modal-backdrop {
   position: absolute; inset: 0; z-index: 40;

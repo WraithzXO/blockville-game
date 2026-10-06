@@ -8,6 +8,9 @@ import {
   pickActivity,
   randInt,
   type BuildingType,
+  type FaceType,
+  type HatType,
+  type PlayerLook,
 } from './config';
 import type { EngineApi, Plot } from './state';
 
@@ -54,6 +57,138 @@ function sign(text: string, bg: string, w = 6, h = 1.5): THREE.Mesh {
   return m;
 }
 
+// ── shared detail pieces so buildings read as crafted, not generic ─────────
+function windowBox(w = 0.9, h = 1.1): THREE.Group {
+  const g = new THREE.Group();
+  const frame = box(w + 0.16, h + 0.16, 0.12, mat(0xffffff));
+  const glass = box(w, h, 0.14, mat(0x9fd8ef, { roughness: 0.35, metalness: 0.1 }));
+  glass.position.z = 0.02;
+  g.add(frame, glass);
+  return g;
+}
+
+function frontPath(g: THREE.Group, z: number) {
+  for (let i = 0; i < 3; i++) {
+    const slab = box(1.5, 0.1, 0.9, mat(0xb9b2a4));
+    slab.position.set(0, 0.05, z + 0.7 + i * 1.1);
+    g.add(slab);
+  }
+}
+
+function entranceSteps(g: THREE.Group, z: number, w = 3) {
+  const s1 = box(w, 0.18, 1, mat(0xcfc8b8));
+  s1.position.set(0, 0.09, z);
+  const s2 = box(w - 0.6, 0.18, 0.8, mat(0xdad3c2));
+  s2.position.set(0, 0.27, z - 0.25);
+  g.add(s1, s2);
+}
+
+// ── faces: a canvas texture applied to the front of the head ───────────────
+function faceTexture(face: FaceType, skin: string): THREE.CanvasTexture {
+  const c = document.createElement('canvas');
+  c.width = c.height = 128;
+  const g = c.getContext('2d')!;
+  g.fillStyle = skin;
+  g.fillRect(0, 0, 128, 128);
+  g.fillStyle = '#26221f';
+  // eyes
+  if (face === 'chill') {
+    g.lineWidth = 7;
+    g.strokeStyle = '#26221f';
+    g.lineCap = 'round';
+    for (const ex of [38, 90]) {
+      g.beginPath();
+      g.arc(ex, 52, 9, Math.PI * 1.08, Math.PI * 1.92);
+      g.stroke();
+    }
+  } else {
+    for (const ex of [40, 88]) {
+      g.beginPath();
+      g.arc(ex, 50, face === 'wow' ? 10 : 8, 0, Math.PI * 2);
+      g.fill();
+    }
+  }
+  // mouth
+  g.lineWidth = 7;
+  g.strokeStyle = '#26221f';
+  g.lineCap = 'round';
+  if (face === 'grin') {
+    g.fillStyle = '#7c3b34';
+    g.beginPath();
+    g.moveTo(44, 80);
+    g.quadraticCurveTo(64, 106, 84, 80);
+    g.closePath();
+    g.fill();
+    g.stroke();
+  } else if (face === 'wow') {
+    g.fillStyle = '#7c3b34';
+    g.beginPath();
+    g.ellipse(64, 88, 9, 12, 0, 0, Math.PI * 2);
+    g.fill();
+  } else if (face === 'chill') {
+    g.beginPath();
+    g.arc(64, 78, 14, Math.PI * 0.15, Math.PI * 0.85);
+    g.stroke();
+  } else {
+    g.beginPath();
+    g.arc(64, 74, 16, Math.PI * 0.18, Math.PI * 0.82);
+    g.stroke();
+  }
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.magFilter = THREE.NearestFilter;
+  return t;
+}
+
+function hatMesh(hat: HatType): THREE.Group | null {
+  if (hat === 'none') return null;
+  const g = new THREE.Group();
+  if (hat === 'cap') {
+    const dome = box(0.78, 0.26, 0.78, mat(0xd8452f));
+    dome.position.y = 0.13;
+    const brim = box(0.7, 0.07, 0.34, mat(0xb93a27));
+    brim.position.set(0, 0.03, 0.5);
+    g.add(dome, brim);
+  } else if (hat === 'beanie') {
+    const dome = box(0.8, 0.34, 0.8, mat(0x5fb8b0));
+    dome.position.y = 0.15;
+    const rim = box(0.84, 0.12, 0.84, mat(0x47908b));
+    rim.position.y = 0.02;
+    g.add(dome, rim);
+  } else if (hat === 'crown') {
+    const band = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.42, 0.42, 0.28, 8),
+      mat(0xe0b64a, { metalness: 0.6, roughness: 0.3 }),
+    );
+    band.position.y = 0.14;
+    g.add(band);
+    for (let i = 0; i < 4; i++) {
+      const spike = box(0.14, 0.24, 0.14, mat(0xe0b64a, { metalness: 0.6, roughness: 0.3 }));
+      const a = (i / 4) * Math.PI * 2;
+      spike.position.set(Math.cos(a) * 0.32, 0.38, Math.sin(a) * 0.32);
+      g.add(spike);
+    }
+  } else if (hat === 'tophat') {
+    const brim = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.52, 0.52, 0.06, 14),
+      mat(0x1c1c22, { roughness: 0.5 }),
+    );
+    brim.position.y = 0.03;
+    const tube = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.34, 0.34, 0.5, 14),
+      mat(0x1c1c22, { roughness: 0.5 }),
+    );
+    tube.position.y = 0.3;
+    const band = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.35, 0.35, 0.1, 14),
+      mat(0xe0b64a),
+    );
+    band.position.y = 0.14;
+    g.add(brim, tube, band);
+  }
+  return g;
+}
+
 // ── building meshes (each type has a distinct identity) ───────────────────
 function buildCasino(level: number): THREE.Group {
   const g = new THREE.Group();
@@ -72,6 +207,22 @@ function buildCasino(level: number): THREE.Group {
   const door = box(2.4, 2.4, 0.15, mat(0x111111, { metalness: 0.6, roughness: 0.2 }));
   door.position.set(0, 1.2, 3.02 * s);
   g.add(door);
+  // gold-framed windows either side of the doors
+  for (const wx of [-2.6, 2.6]) {
+    const win = windowBox(1.1, 1.3);
+    win.position.set(wx * s, 2.1 * s, 3.02 * s);
+    g.add(win);
+  }
+  entranceSteps(g, 3.7, 3.4);
+  // string of warm bulbs under the roof edge
+  for (let i = 0; i < 7; i++) {
+    const bulb = new THREE.Mesh(
+      new THREE.SphereGeometry(0.14, 8, 8),
+      new THREE.MeshStandardMaterial({ color: 0xffe08a, emissive: 0xffc94d, emissiveIntensity: 0.9 }),
+    );
+    bulb.position.set(-3.3 + i * 1.1, 3.9 * s, 3.35 * s);
+    g.add(bulb);
+  }
   // rooftop beacon
   const beacon = new THREE.Mesh(
     new THREE.SphereGeometry(0.4, 12, 12),
@@ -95,6 +246,7 @@ function buildCasino(level: number): THREE.Group {
     tip.position.set(-3.4 * s, 7.2, 0);
     g.add(tip);
   }
+  frontPath(g, 3.9);
   return g;
 }
 
@@ -139,6 +291,23 @@ function buildMine(level: number): THREE.Group {
   const board = sign('MINE', '#4a3524', 3.4, 1);
   board.position.set(0, 4.4, 3.4);
   g.add(board);
+  // timber posts flanking the entrance, with a glowing lantern
+  for (const px of [-2.1, 2.1]) {
+    const post = box(0.28, 2.6, 0.28, mat(0x5c4430));
+    post.position.set(px, 1.3, 4.6);
+    g.add(post);
+  }
+  const lamp = new THREE.Mesh(
+    new THREE.BoxGeometry(0.35, 0.45, 0.35),
+    new THREE.MeshStandardMaterial({ color: 0xffd54f, emissive: 0xffb300, emissiveIntensity: 1.1 }),
+  );
+  lamp.position.set(-2.1, 2.9, 4.6);
+  g.add(lamp);
+  // tailings pile beside the mound
+  const tail = new THREE.Mesh(new THREE.ConeGeometry(1.4, 1.5, 6), mat(0x5d4d3e));
+  tail.position.set(4.2, 0.75, 2.4);
+  tail.castShadow = true;
+  g.add(tail);
   if (level >= 2) {
     const derrick = box(0.5, 3, 0.5, mat(0x4a3524));
     derrick.position.set(-3.6, 1.5, 2.5);
@@ -187,6 +356,17 @@ function buildShop(level: number): THREE.Group {
   const board = sign('SHOP', '#e8874a', 4.4, 1.2);
   board.position.set(0, 3.1 * s, 2.78 * s);
   g.add(board);
+  // produce crates on a window sill
+  const sill = box(2.6, 0.18, 0.5, mat(0x8a5a33));
+  sill.position.set(1.3, 0.75, 2.95 * s);
+  g.add(sill);
+  const goods = [0xe0574f, 0x53b56d, 0xe8b04c];
+  for (let i = 0; i < 3; i++) {
+    const item = box(0.4, 0.4, 0.4, mat(goods[i]));
+    item.position.set(0.7 + i * 0.6, 1.04, 2.95 * s);
+    g.add(item);
+  }
+  entranceSteps(g, 3.15, 2.6);
   if (level >= 2) {
     const ext = box(2.2 * s, 2.6 * s, 4 * s, mat(0xf2e3c8));
     ext.position.set(4.2 * s, 1.3 * s, 0);
@@ -225,6 +405,12 @@ function buildBank(level: number): THREE.Group {
   const board = sign('BANK', '#2e7d4f', 4.6, 1.2);
   board.position.set(0, 4.4 * s, 3.06 * s);
   g.add(board);
+  // tall windows between the columns
+  for (const wx of [-1.6, 1.6]) {
+    const win = windowBox(0.85, 1.9);
+    win.position.set(wx * s, 2.2 * s, 3.05 * s);
+    g.add(win);
+  }
   if (level >= 2) {
     const dome = new THREE.Mesh(
       new THREE.SphereGeometry(1.4, 16, 12, 0, Math.PI * 2, 0, Math.PI / 2),
@@ -233,6 +419,7 @@ function buildBank(level: number): THREE.Group {
     dome.position.y = 5.1 * s;
     g.add(dome);
   }
+  frontPath(g, 4.6);
   return g;
 }
 
@@ -247,6 +434,8 @@ function buildMesh(type: BuildingType, level: number): THREE.Group {
 
 // ── NPC ────────────────────────────────────────────────────────────────────
 const NPC_COLORS = [0xe0574f, 0x4f8fe0, 0x53b56d, 0xc99a3c, 0x8e6fc1, 0xd97fa8, 0x5fb8b0];
+const NPC_HATS: HatType[] = ['none', 'none', 'none', 'cap', 'beanie'];
+const NPC_FACES: FaceType[] = ['smile', 'grin', 'chill', 'wow'];
 
 interface Npc {
   group: THREE.Group;
@@ -263,6 +452,7 @@ interface Npc {
 // ── the engine ─────────────────────────────────────────────────────────────
 interface PlotVisual {
   marker?: THREE.Mesh;
+  clickPlane?: THREE.Mesh;    // dedicated invisible click target (no overlaps)
   site?: THREE.Group;         // foundation + scaffold + block stack
   stackBlocks: THREE.Mesh[];
   building?: THREE.Group;
@@ -290,19 +480,27 @@ export class Engine implements EngineApi {
 
   private onPlotClick: (id: number) => void;
   private onBuildClick: (id: number) => void;
+  private onStoreClick: () => void;
   private requestReward: (b: BuildingType) => void;
+  private storeClickPlane?: THREE.Mesh;
+  private player?: THREE.Group;
+  private playerLook: PlayerLook;
 
   constructor(
     private container: HTMLDivElement,
     cb: {
       onPlotClick: (id: number) => void;
       onBuildClick: (id: number) => void;
+      onStoreClick: () => void;
       requestReward: (b: BuildingType) => void;
     },
+    look: PlayerLook,
   ) {
     this.onPlotClick = cb.onPlotClick;
     this.onBuildClick = cb.onBuildClick;
+    this.onStoreClick = cb.onStoreClick;
     this.requestReward = cb.requestReward;
+    this.playerLook = look;
 
     this.renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'low-power' });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.75));
@@ -390,6 +588,16 @@ export class Engine implements EngineApi {
     // starter Blockville Store
     this.scene.add(this.makeStore());
 
+    // store click target (invisible plane in front of the storefront)
+    const storePlane = new THREE.Mesh(
+      new THREE.PlaneGeometry(10, 5),
+      new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false }),
+    );
+    storePlane.rotation.x = -Math.PI / 2;
+    storePlane.position.set(STORE_POS.x, 0.9, STORE_POS.z + 4.6);
+    this.scene.add(storePlane);
+    this.storeClickPlane = storePlane;
+
     // decorative trees
     const treeSpots: [number, number][] = [
       [-38, -22], [38, -22], [-38, 24], [38, 24], [-46, 2], [46, 2], [-16, -22], [16, -22], [-30, 26], [30, 26],
@@ -409,15 +617,25 @@ export class Engine implements EngineApi {
 
     // plot markers
     for (const p of PLOT_POSITIONS) {
+      // invisible click plane — one per plot, sized to leave a clear gap between plots
+      const clickPlane = new THREE.Mesh(
+        new THREE.PlaneGeometry(8, 8),
+        new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false }),
+      );
+      clickPlane.rotation.x = -Math.PI / 2;
+      clickPlane.position.set(p.x, 1.1, p.z);
+      clickPlane.userData.plotId = p.id;
+      this.scene.add(clickPlane);
+      this.clickTargets.set(clickPlane.uuid, p.id);
+
+      // visual marker (not clickable)
       const marker = new THREE.Mesh(
         new THREE.PlaneGeometry(9, 9),
         new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.25 }),
       );
       marker.rotation.x = -Math.PI / 2;
       marker.position.set(p.x, 0.06, p.z);
-      marker.userData.plotId = p.id;
       this.scene.add(marker);
-      this.clickTargets.set(marker.uuid, p.id);
 
       const border = new THREE.LineSegments(
         new THREE.EdgesGeometry(new THREE.PlaneGeometry(9, 9)),
@@ -429,6 +647,21 @@ export class Engine implements EngineApi {
 
       this.plotVisuals.set(p.id, { marker, stackBlocks: [] });
     }
+
+    // the player's resident, standing by the store
+    this.spawnPlayer();
+  }
+
+  private spawnPlayer() {
+    if (this.player) {
+      this.scene.remove(this.player);
+      this.player = undefined;
+    }
+    const g = this.makeNpcMesh(this.playerLook);
+    g.position.set(STORE_POS.x + 4.5, 0, STORE_POS.z + 5.5);
+    g.rotation.y = 0.4;   // angled toward the default camera
+    this.scene.add(g);
+    this.player = g;
   }
 
   private makeStore(): THREE.Group {
@@ -512,23 +745,33 @@ export class Engine implements EngineApi {
   }
 
   private stackPos(i: number): THREE.Vector3 {
-    // pseudo-random-but-stable stack layout, 5 per layer ring around center
-    const layer = Math.floor(i / 6);
-    const idx = i % 6;
-    const ring = [[0, 0], [1.1, 0], [-1.1, 0], [0, 1.1], [0, -1.1], [0.8, 0.8]][idx];
-    return new THREE.Vector3(ring[0] + ((layer % 2) * 0.3 - 0.15), 0.4 + layer * 0.82, ring[1] + ((layer % 3) * 0.2 - 0.2));
+    // orderly courses of blocks laid like brickwork: a solid footprint per layer
+    const layer = Math.floor(i / 8);
+    const idx = i % 8;
+    const ring = [
+      [-1.15, -1.15], [0, -1.15], [1.15, -1.15],
+      [-1.15, 0], [1.15, 0],
+      [-1.15, 1.15], [0, 1.15], [1.15, 1.15],
+    ][idx];
+    // alternate layers shift half a block, like real courses of bricks
+    const shift = layer % 2 ? 0.55 : 0;
+    return new THREE.Vector3(ring[0] + shift * ((idx % 2) ? 0 : 1), 0.42 + layer * 0.84, ring[1]);
   }
 
   private updateStack(p: Plot, v: PlotVisual) {
     while (v.stackBlocks.length < p.progress && v.site) {
       const i = v.stackBlocks.length;
       const pos = this.stackPos(i);
-      const colors = [0xe8b04c, 0xd97b3f, 0x9aa7b0, 0x87b9d8];
-      const b = box(0.9, 0.8, 0.9, mat(colors[i % colors.length]));
+      // two-tone courses read as intentional brickwork rather than random blocks
+      const course = Math.floor(i / 8);
+      const color = course % 2 ? 0xd97b3f : 0xe8b04c;
+      const b = box(1.05, 0.8, 1.05, mat(color));
       const target = pos.clone();
-      b.position.set(target.x, target.y + 6, target.z); // drop in from above
+      b.position.set(target.x, target.y + 4.5, target.z); // drop in from above
+      b.rotation.y = (Math.random() - 0.5) * 0.25;        // slight tilt while falling
       b.userData.dropT = 0;
       b.userData.targetY = target.y;
+      b.userData.landed = false;
       v.site.add(b);
       v.stackBlocks.push(b);
     }
@@ -567,7 +810,11 @@ export class Engine implements EngineApi {
       const hits = this.raycaster.intersectObjects(this.scene.children, true);
       for (const h of hits) {
         let o: THREE.Object3D | null = h.object;
-        while (o && !this.clickTargets.has(o.uuid)) o = o.parent;
+        while (o && !(this.clickTargets.has(o.uuid) || o === this.storeClickPlane)) o = o.parent;
+        if (o === this.storeClickPlane) {
+          this.onStoreClick();
+          return;
+        }
         if (o) {
           const id = this.clickTargets.get(o.uuid)!;
           const st = this.plotState[id];
@@ -589,26 +836,63 @@ export class Engine implements EngineApi {
   };
 
   // ── NPCs ────────────────────────────────────────────────────────────────
-  private makeNpcMesh(): THREE.Group {
+  private makeNpcMesh(look?: PlayerLook): THREE.Group {
     const g = new THREE.Group();
-    const color = NPC_COLORS[randInt(0, NPC_COLORS.length - 1)];
+    const shirt = look
+      ? new THREE.Color(look.shirt).getHex()
+      : NPC_COLORS[randInt(0, NPC_COLORS.length - 1)];
+    const skin = look ? look.skin : ['#f5d5b5', '#f0c8a0', '#c98850', '#8d5a3a'][randInt(0, 3)];
+    const face: FaceType = look ? look.face : NPC_FACES[randInt(0, NPC_FACES.length - 1)];
+    const hat: HatType = look ? look.hat : NPC_HATS[randInt(0, NPC_HATS.length - 1)];
     const legL = box(0.28, 0.7, 0.28, mat(0x35415c));
     legL.position.set(-0.2, 0.35, 0);
     const legR = legL.clone();
     legR.position.x = 0.2;
-    const body = box(0.85, 1.0, 0.5, mat(color));
+    const body = box(0.85, 1.0, 0.5, mat(shirt));
     body.position.y = 1.2;
-    const armL = box(0.2, 0.85, 0.24, mat(color));
+    const armL = box(0.2, 0.85, 0.24, mat(shirt));
     armL.position.set(-0.55, 1.25, 0);
     const armR = armL.clone();
     armR.position.x = 0.55;
-    const head = box(0.75, 0.75, 0.75, mat(0xf0c8a0));
+    // head with a real face on the front (+Z), plain skin on the other sides
+    const skinMat = mat(new THREE.Color(skin).getHex());
+    const faceMat = new THREE.MeshStandardMaterial({ map: faceTexture(face, skin), roughness: 0.85 });
+    const head = new THREE.Mesh(
+      new THREE.BoxGeometry(0.75, 0.75, 0.75),
+      [skinMat, skinMat, skinMat, skinMat, faceMat, skinMat],
+    );
+    head.castShadow = true;
     head.position.y = 2.08;
     const hair = box(0.78, 0.2, 0.78, mat(0x3a2e26));
     hair.position.y = 2.46;
     g.add(legL, legR, body, armL, armR, head, hair);
+    const h = hatMesh(hat);
+    if (h) {
+      h.position.y = 2.56;
+      g.add(h);
+    }
     (g as any).legs = [legL, legR];
     return g;
+  }
+
+  setLook(look: PlayerLook) {
+    this.playerLook = look;
+    this.spawnPlayer();
+  }
+
+  // world -> CSS pixel position (used by dev tooling and tests)
+  screenPos(x: number, z: number): { x: number; y: number } {
+    const v = new THREE.Vector3(x, 1, z).project(this.camera);
+    return {
+      x: (v.x * 0.5 + 0.5) * this.container.clientWidth,
+      y: (-v.y * 0.5 + 0.5) * this.container.clientHeight,
+    };
+  }
+
+  // dev/testing: move the camera to a given distance from its target
+  setCamDist(dist: number) {
+    const dir = new THREE.Vector3().subVectors(this.camera.position, this.controls.target).normalize();
+    this.camera.position.copy(this.controls.target).addScaledVector(dir, dist);
   }
 
   private spawnVisit() {
@@ -680,9 +964,28 @@ export class Engine implements EngineApi {
     for (const [, v] of this.plotVisuals) {
       if (v.site) {
         for (const b of v.stackBlocks) {
-          const t = (b.userData.dropT = (b.userData.dropT ?? 0) + dt * 4);
+          const t = (b.userData.dropT = (b.userData.dropT ?? 0) + dt * 2.6);
+          const targetY = b.userData.targetY;
           if (t < 1) {
-            b.position.y = b.userData.targetY + 6 * (1 - Math.min(1, t));
+            // smooth ease-out fall
+            const e = 1 - Math.pow(1 - t, 3);
+            b.position.y = targetY + 4.5 * (1 - e);
+          } else if (!b.userData.landed) {
+            b.userData.landed = true;
+            b.userData.bounceT = 0;
+          } else if (b.userData.bounceT < 1) {
+            // impact: small squash-and-settle so blocks feel weighted
+            b.userData.bounceT = Math.min(1, b.userData.bounceT + dt * 5);
+            const bt = b.userData.bounceT;
+            const sq = Math.sin(bt * Math.PI) * 0.16;
+            b.scale.set(1 + sq * 0.5, 1 - sq, 1 + sq * 0.5);
+            b.position.y = targetY + Math.sin(bt * Math.PI) * 0.18;
+            b.rotation.y *= Math.max(0, 1 - dt * 7);
+            if (bt >= 1) {
+              b.scale.set(1, 1, 1);
+              b.rotation.y = 0;
+              b.position.y = targetY;
+            }
           }
         }
       }
@@ -767,6 +1070,11 @@ export class Engine implements EngineApi {
         n.bubble.style.left = `${x}px`;
         n.bubble.style.top = `${y}px`;
       }
+    }
+
+    // your resident idles by the store — a gentle breathing bob
+    if (this.player) {
+      this.player.position.y = Math.abs(Math.sin(this.clock.elapsedTime * 1.6)) * 0.06;
     }
 
     this.controls.update();

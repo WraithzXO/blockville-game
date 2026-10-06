@@ -21,10 +21,17 @@ export default function GameCanvas() {
         if (p && !p.type) dispatch({ t: 'selectPlot', plot: id });
       },
       onBuildClick: (id) => dispatch({ t: 'buildClick', plot: id }),
+      onStoreClick: () => dispatch({ t: 'setStoreOpen', open: true }),
       requestReward: (b) => bridge.rewardBridge().requestReward(b),
-    });
+    }, stateRef.current.look);
     engineRef.current = engine;
     bridge.setEngine(engine as EngineApi);
+    if (import.meta.env.DEV) {
+      (window as unknown as Record<string, unknown>).__bv = {
+        screenPos: (x: number, z: number) => engine.screenPos(x, z),
+        camDist: (d: number) => engine.setCamDist(d),
+      };
+    }
     return () => {
       engine.dispose();
       bridge.setEngine(null);
@@ -38,6 +45,11 @@ export default function GameCanvas() {
     const target = built === 0 ? CONFIG.baseNpcs : Math.round(CONFIG.baseNpcs + built * CONFIG.npcPerBuilding);
     engineRef.current?.sync(state.plots, Math.min(CONFIG.maxNpcs, target));
   }, [state.plots]);
+
+  // push look changes into the engine
+  useEffect(() => {
+    engineRef.current?.setLook(state.look);
+  }, [state.look]);
 
   return <div className="game-canvas" ref={containerRef} data-testid="game-canvas" />;
 }

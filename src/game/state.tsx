@@ -10,7 +10,12 @@ import {
   BUILDING_DEFS,
   CONFIG,
   PLOT_POSITIONS,
+  DEFAULT_LOOK,
+  HATS,
+  STORE_ITEMS,
+  plotAllowance,
   type BuildingType,
+  type PlayerLook,
 } from './config';
 
 export interface Plot {
@@ -44,14 +49,23 @@ interface State {
   feed: FeedItem[];
   toasts: Toast[];
   selectedPlot: number | null;
+  look: PlayerLook;
+  unlockedHats: string[];      // hat ids purchased from the Store
+  storeOpen: boolean;
+  customiseOpen: boolean;
 }
 
 type Action =
   | { t: 'setMode'; mode: 'demo' | 'wallet' }
   | { t: 'stake'; amount: number }
+  | { t: 'stakeMore'; amount: number }
   | { t: 'claim'; plot: number; type: BuildingType }
   | { t: 'buildClick'; plot: number }
   | { t: 'selectPlot'; plot: number | null }
+  | { t: 'buyItem'; item: string }
+  | { t: 'setLook'; look: PlayerLook }
+  | { t: 'setStoreOpen'; open: boolean }
+  | { t: 'setCustomiseOpen'; open: boolean }
   | { t: 'npcReward'; building: BuildingType; amount: number }
   | { t: 'feed'; icon: string; text: string; detail: string }
   | { t: 'toast'; text: string }
@@ -74,6 +88,10 @@ const initial: State = {
   feed: [],
   toasts: [],
   selectedPlot: null,
+  look: { ...DEFAULT_LOOK },
+  unlockedHats: [],
+  storeOpen: false,
+  customiseOpen: false,
 };
 
 function reducer(s: State, a: Action): State {
@@ -102,11 +120,39 @@ function reducer(s: State, a: Action): State {
           ...s.toasts,
           { id: nextId(), text: `🏗️ Builder unlocked — +${CONFIG.starterBlocks} starter blocks` },
         ],
+        customiseOpen: true,   // first visit: pick your resident's look
+      };
+    }
+    case 'stakeMore': {
+      if (!s.builder || a.amount <= 0 || a.amount > s.balance) return s;
+      const before = plotAllowance(s.staked);
+      const staked = s.staked + a.amount;
+      const after = plotAllowance(staked);
+      return {
+        ...s,
+        balance: s.balance - a.amount,
+        staked,
+        feed: [
+          {
+            id: nextId(),
+            icon: '🔒',
+            text: `Staked ${a.amount.toLocaleString()} $BLOCKVILLE`,
+            detail: after > before
+              ? `You can now claim ${after} block${after === 1 ? '' : 's'} of land`
+              : `Total staked: ${staked.toLocaleString()}`,
+          },
+          ...s.feed,
+        ].slice(0, 8),
+        toasts: after > before
+          ? [...s.toasts, { id: nextId(), text: `🗺️ Block of land unlocked — ${after}/${CONFIG.maxPlots}` }]
+          : s.toasts,
       };
     }
     case 'claim': {
       const def = BUILDING_DEFS[a.type];
       if (s.blocks < def.cost) return s;
+      const claimed = s.plots.filter((p) => p.type).length;
+      if (claimed >= plotAllowance(s.staked)) return s;   // need more stake to claim
       return {
         ...s,
         blocks: s.blocks - def.cost,
@@ -157,6 +203,39 @@ function reducer(s: State, a: Action): State {
     }
     case 'selectPlot':
       return { ...s, selectedPlot: a.plot };
+    case 'buyItem': {
+      const item = STORE_ITEMS.find((i) => i.id === a.item);
+      if (!item || s.balance < item.price) return s;
+      const base: State = { ...s, balance: s.balance - item.price };
+      if (item.kind === 'blocks') {
+        return {
+          ...base,
+          blocks: s.blocks + (item.blocks ?? 0),
+          toasts: [...s.toasts, { id: nextId(), text: `🛒 ${item.name} — +${item.blocks} blocks` }],
+          feed: [
+            { id: nextId(), icon: item.icon, text: `${item.name} purchased`, detail: `+${item.blocks} blocks for ${item.price.toLocaleString()} $BLOCKVILLE` },
+            ...s.feed,
+          ].slice(0, 8),
+        };
+      }
+      const hat = item.cosmetic!;
+      if (s.unlockedHats.includes(hat)) return s;
+      return {
+        ...base,
+        unlockedHats: [...s.unlockedHats, hat],
+        toasts: [...s.toasts, { id: nextId(), text: `${item.icon} ${item.name} unlocked — customise your resident!` }],
+        feed: [
+          { id: nextId(), icon: item.icon, text: `${item.name} unlocked`, detail: `Equip it in the character customiser` },
+          ...s.feed,
+        ].slice(0, 8),
+      };
+    }
+    case 'setLook':
+      return { ...s, look: a.look };
+    case 'setStoreOpen':
+      return { ...s, storeOpen: a.open, selectedPlot: a.open ? null : s.selectedPlot };
+    case 'setCustomiseOpen':
+      return { ...s, customiseOpen: a.open };
     case 'npcReward': {
       const def = BUILDING_DEFS[a.building];
       return {
@@ -186,6 +265,7 @@ function reducer(s: State, a: Action): State {
 // ── Engine bridge ──────────────────────────────────────────────────────────
 export interface EngineApi {
   sync: (plots: Plot[], npcTarget: number) => void;
+  setLook: (look: PlayerLook) => void;
   dispose: () => void;
 }
 

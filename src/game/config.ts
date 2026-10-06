@@ -8,6 +8,10 @@ export const CONFIG = {
   stakeMin: 20_000,          // $BLOCKVILLE needed to become a Builder
   starterBlocks: 120,        // blocks granted on becoming a Builder
 
+  // Land ("blocks"): up to 5 claimable plots, each requiring 20,000 staked
+  plotStakeCost: 20_000,     // stake locked per plot ("block of land")
+  maxPlots: 5,               // hard cap on claims per holder
+
   // Fee rewards (demo placeholder — NOT real on-chain rewards)
   feeChance: 0.35,           // chance an NPC visit generates a fee share
   feeMin: 0.02,
@@ -22,6 +26,70 @@ export const CONFIG = {
   bubbleTimeMin: 1.5,        // seconds a chat bubble stays visible
   bubbleTimeMax: 3.0,
 } as const;
+
+// ── character customisation ────────────────────────────────────────────────
+export type HatType = 'none' | 'cap' | 'beanie' | 'crown' | 'tophat';
+export type FaceType = 'smile' | 'grin' | 'chill' | 'wow';
+
+export interface PlayerLook {
+  skin: string;
+  shirt: string;
+  hat: HatType;
+  face: FaceType;
+}
+
+export const DEFAULT_LOOK: PlayerLook = { skin: '#f0c8a0', shirt: '#e0574f', hat: 'none', face: 'smile' };
+
+export const SKIN_TONES = ['#f5d5b5', '#f0c8a0', '#c98850', '#8d5a3a', '#6b4226'];
+
+export const SHIRT_COLORS = [
+  { name: 'Red', hex: '#e0574f' },
+  { name: 'Blue', hex: '#4f8fe0' },
+  { name: 'Green', hex: '#53b56d' },
+  { name: 'Gold', hex: '#c99a3c' },
+  { name: 'Purple', hex: '#8e6fc1' },
+  { name: 'Pink', hex: '#d97fa8' },
+  { name: 'Teal', hex: '#5fb8b0' },
+  { name: 'Navy', hex: '#35415c' },
+];
+
+export const FACE_STYLES: { id: FaceType; label: string }[] = [
+  { id: 'smile', label: '🙂 Smile' },
+  { id: 'grin', label: '😁 Grin' },
+  { id: 'chill', label: '😌 Chill' },
+  { id: 'wow', label: '😮 Wow' },
+];
+
+export const HATS: { id: HatType; label: string; price: number }[] = [
+  { id: 'none', label: 'None', price: 0 },
+  { id: 'cap', label: '🧢 Cap', price: 0 },
+  { id: 'beanie', label: '🧶 Beanie', price: 0 },
+  { id: 'tophat', label: '🎩 Top Hat', price: 750 },     // purchasable in the Store
+  { id: 'crown', label: '👑 Crown', price: 2500 },       // purchasable in the Store
+];
+
+// ── store items (purchasable with demo $BLOCKVILLE) ───────────────────────
+export interface StoreItem {
+  id: string;
+  icon: string;
+  name: string;
+  blurb: string;
+  price: number;
+  kind: 'blocks' | 'cosmetic';
+  blocks?: number;
+  cosmetic?: HatType;
+}
+
+export const STORE_ITEMS: StoreItem[] = [
+  { id: 'pallet', icon: '🧱', name: 'Brick Pallet', blurb: '+10 building blocks, ready to place', price: 250, kind: 'blocks', blocks: 10 },
+  { id: 'crate', icon: '📦', name: 'Block Crate', blurb: '+25 building blocks at a fair price', price: 500, kind: 'blocks', blocks: 25 },
+  { id: 'bulk', icon: '🚚', name: 'Bulk Delivery', blurb: '+60 building blocks, best value', price: 1000, kind: 'blocks', blocks: 60 },
+  { id: 'tophat', icon: '🎩', name: 'Top Hat', blurb: 'Distinguished headwear for your resident', price: 750, kind: 'cosmetic', cosmetic: 'tophat' },
+  { id: 'crown', icon: '👑', name: 'Golden Crown', blurb: 'For true Blockville royalty', price: 2500, kind: 'cosmetic', cosmetic: 'crown' },
+];
+
+export const plotAllowance = (staked: number) =>
+  Math.min(CONFIG.maxPlots, Math.floor(staked / CONFIG.plotStakeCost));
 
 export interface BuildingDef {
   name: string;

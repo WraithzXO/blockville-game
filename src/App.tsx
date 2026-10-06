@@ -1,5 +1,17 @@
 import { useState } from 'react';
-import { BUILDING_DEFS, CONFIG, stageFor, type BuildingType } from './game/config';
+import {
+  BUILDING_DEFS,
+  CONFIG,
+  FACE_STYLES,
+  HATS,
+  SHIRT_COLORS,
+  SKIN_TONES,
+  STORE_ITEMS,
+  plotAllowance,
+  stageFor,
+  type BuildingType,
+  type PlayerLook,
+} from './game/config';
 import { GameProvider, useGame, useToastTimer } from './game/state';
 import GameCanvas from './game/GameCanvas';
 
@@ -70,6 +82,8 @@ function ClaimMenu() {
   if (state.selectedPlot === null) return null;
   const plot = state.plots.find((p) => p.id === state.selectedPlot)!;
   if (plot.type) return null;
+  const claimed = state.plots.filter((p) => p.type).length;
+  const locked = claimed >= plotAllowance(state.staked);
   return (
     <div className="claim-menu">
       <div className="claim-head">
@@ -95,7 +109,167 @@ function ClaimMenu() {
           );
         })}
       </div>
+      {locked && state.builder && (
+        <div className="claim-note">
+          🔒 Each block of land needs {CONFIG.plotStakeCost.toLocaleString()} $BLOCKVILLE staked
+          ({claimed}/{CONFIG.maxPlots} claimed). Use "Stake more" in the top bar to unlock another plot.
+        </div>
+      )}
       {!state.builder && <div className="claim-note">Stake at the Blockville Store first to claim plots.</div>}
+    </div>
+  );
+}
+
+// ── character customiser (array of options to pick from) ───────────────────
+function CustomiseModal() {
+  const { state, dispatch } = useGame();
+  if (!state.customiseOpen || !state.builder) return null;
+  const set = (patch: Partial<PlayerLook>) =>
+    dispatch({ t: 'setLook', look: { ...state.look, ...patch } });
+  return (
+    <div className="modal-backdrop" onClick={() => dispatch({ t: 'setCustomiseOpen', open: false })}>
+      <div className="modal customise-modal" onClick={(e) => e.stopPropagation()}>
+        <div className="store-sign">🧍 CUSTOMISE YOUR RESIDENT</div>
+        <p className="store-copy">
+          This is your character standing by the store. Pick a look — change it any time from the top bar.
+        </p>
+        <div className="cust-row-label">Skin</div>
+        <div className="chip-row">
+          {SKIN_TONES.map((s) => (
+            <button
+              key={s}
+              className={`chip swatch ${state.look.skin === s ? 'active' : ''}`}
+              style={{ background: s }}
+              onClick={() => set({ skin: s })}
+            />
+          ))}
+        </div>
+        <div className="cust-row-label">Shirt</div>
+        <div className="chip-row">
+          {SHIRT_COLORS.map((c) => (
+            <button
+              key={c.hex}
+              className={`chip swatch ${state.look.shirt === c.hex ? 'active' : ''}`}
+              style={{ background: c.hex }}
+              title={c.name}
+              onClick={() => set({ shirt: c.hex })}
+            />
+          ))}
+        </div>
+        <div className="cust-row-label">Face</div>
+        <div className="chip-row">
+          {FACE_STYLES.map((f) => (
+            <button
+              key={f.id}
+              className={`chip text ${state.look.face === f.id ? 'active' : ''}`}
+              onClick={() => set({ face: f.id })}
+            >
+              {f.label}
+            </button>
+          ))}
+        </div>
+        <div className="cust-row-label">Hat</div>
+        <div className="chip-row">
+          {HATS.map((h) => {
+            const owned = h.price === 0 || state.unlockedHats.includes(h.id);
+            return (
+              <button
+                key={h.id}
+                className={`chip text ${state.look.hat === h.id ? 'active' : ''} ${owned ? '' : 'locked'}`}
+                title={owned ? '' : `Buy in the Blockville Store — ${h.price.toLocaleString()} $BLOCKVILLE`}
+                onClick={() => owned && set({ hat: h.id })}
+              >
+                {owned ? h.label : `🔒 ${h.label}`}
+              </button>
+            );
+          })}
+        </div>
+        <button className="cta" onClick={() => dispatch({ t: 'setCustomiseOpen', open: false })}>
+          Done — my resident is by the store
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ── store panel (items are actually purchasable) ───────────────────────────
+function StorePanel() {
+  const { state, dispatch } = useGame();
+  if (!state.storeOpen) return null;
+  return (
+    <div className="store-panel">
+      <div className="claim-head">
+        <span>🏪 Blockville Store — spend your $BLOCKVILLE</span>
+        <button className="x" onClick={() => dispatch({ t: 'setStoreOpen', open: false })}>✕</button>
+      </div>
+      <div className="store-items">
+        {STORE_ITEMS.map((item) => {
+          const afford = state.balance >= item.price;
+          const owned = item.kind === 'cosmetic' && state.unlockedHats.includes(item.cosmetic!);
+          return (
+            <button
+              key={item.id}
+              className={`claim-card ${afford && !owned ? '' : 'locked'}`}
+              disabled={!afford || owned}
+              onClick={() => dispatch({ t: 'buyItem', item: item.id })}
+            >
+              <div className="claim-icon">{item.icon}</div>
+              <div className="claim-name">{item.name}</div>
+              <div className="claim-blurb">{owned ? 'Owned — equip it in the customiser' : item.blurb}</div>
+              <div className="claim-cost">{owned ? '✓ owned' : `💰 ${item.price.toLocaleString()} $BLOCKVILLE`}</div>
+            </button>
+          );
+        })}
+      </div>
+      <div className="store-balance">
+        Balance: {state.balance.toLocaleString(undefined, { maximumFractionDigits: 2 })} $BLOCKVILLE
+      </div>
+    </div>
+  );
+}
+
+// ── stake more modal (unlocks more blocks of land) ─────────────────────────
+function StakeMoreModal({ onClose }: { onClose: () => void }) {
+  const { state, dispatch } = useGame();
+  const [amount, setAmount] = useState<number>(CONFIG.plotStakeCost);
+  const can = state.builder && amount > 0 && amount <= state.balance;
+  const nextPlot =
+    plotAllowance(state.staked + amount) > plotAllowance(state.staked)
+      ? plotAllowance(state.staked) + 1
+      : null;
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal" onClick={(e) => e.stopPropagation()}>
+        <div className="store-sign">🔒 STAKE MORE — UNLOCK LAND</div>
+        <p className="store-copy">
+          Each block of land (plot) requires <b>{CONFIG.plotStakeCost.toLocaleString()} $BLOCKVILLE</b> staked.
+          You have <b>{plotAllowance(state.staked)}/{CONFIG.maxPlots}</b> unlocked with{' '}
+          {state.staked.toLocaleString()} currently staked.
+        </p>
+        <div className="stake-row">
+          <input
+            type="number"
+            value={amount}
+            min={0}
+            onChange={(e) => setAmount(Math.max(0, Math.floor(Number(e.target.value) || 0)))}
+          />
+          <span className="token">$BLOCKVILLE</span>
+        </div>
+        <div className="hint-row">
+          <span>Balance: {state.balance.toLocaleString(undefined, { maximumFractionDigits: 2 })}</span>
+          <span>{nextPlot ? `Unlocks plot #${nextPlot}` : 'Not enough for another plot yet'}</span>
+        </div>
+        <button
+          className="cta"
+          disabled={!can}
+          onClick={() => {
+            dispatch({ t: 'stakeMore', amount });
+            onClose();
+          }}
+        >
+          Stake {amount.toLocaleString()} more
+        </button>
+      </div>
     </div>
   );
 }
@@ -124,8 +298,10 @@ function BuildHud() {
 
 // ── top bar ────────────────────────────────────────────────────────────────
 function TopBar() {
-  const { state } = useGame();
+  const { state, dispatch } = useGame();
   const built = state.plots.filter((p) => p.done).length;
+  const claimed = state.plots.filter((p) => p.type).length;
+  const [stakeMoreOpen, setStakeMoreOpen] = useState(false);
   return (
     <>
       <div className="topbar">
@@ -143,10 +319,23 @@ function TopBar() {
           <div className="stat" title="Building blocks in stock">
             🧱 {state.blocks}
           </div>
+          <div className="stat" title="Blocks of land: claimed / unlocked by your stake">
+            🗺️ {claimed}/{plotAllowance(state.staked)}
+          </div>
+          <button className="stat clickable" onClick={() => dispatch({ t: 'setStoreOpen', open: true })} title="Open the Blockville Store">
+            🛒 Store
+          </button>
+          <button className="stat clickable" onClick={() => dispatch({ t: 'setCustomiseOpen', open: true })} title="Customise your resident">
+            🧍 Character
+          </button>
+          <button className="stat clickable" onClick={() => setStakeMoreOpen(true)} title="Stake more to unlock another block of land">
+            🔒 Stake more
+          </button>
           <div className={`badge ${state.builder ? 'on' : ''}`}>{state.builder ? 'BUILDER' : 'VISITOR'}</div>
         </div>
       </div>
       <div className="demo-tag">DEMO MODE — no real wallet or on-chain rewards</div>
+      {stakeMoreOpen && <StakeMoreModal onClose={() => setStakeMoreOpen(false)} />}
     </>
   );
 }
@@ -191,7 +380,9 @@ function Shell() {
       {state.mode !== 'wallet' && <TopBar />}
       {(!state.builder || state.mode === 'wallet') && <StakeModal />}
       <ClaimMenu />
+      <StorePanel />
       <BuildHud />
+      <CustomiseModal />
       {state.builder && <Feed />}
       <Toasts />
     </div>
