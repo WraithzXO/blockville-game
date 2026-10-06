@@ -5,11 +5,22 @@ import {
   CONFIG,
   PLOT_POSITIONS,
   STORE_POS,
+  PLAYER_SPAWN,
+  INTERACT_RANGE,
+  STORE_RANGE,
+  sizeScaleFor,
   pickActivity,
   randInt,
   type BuildingType,
 } from './config';
 import type { EngineApi, Plot } from './state';
+
+// What the player is standing near — drives the "press E" prompt in the UI
+export interface NearInfo {
+  kind: 'plot' | 'site' | 'store' | 'done';
+  plotId?: number;
+  label: string;
+}
 
 // ── small helpers ──────────────────────────────────────────────────────────
 const mat = (color: number | string, opts: THREE.MeshStandardMaterialParameters = {}) =>
@@ -55,10 +66,10 @@ function sign(text: string, bg: string, w = 6, h = 1.5): THREE.Mesh {
 }
 
 // ── building meshes (each type has a distinct identity) ───────────────────
-function buildCasino(level: number): THREE.Group {
+function buildCasino(level: number, tint = 0): THREE.Group {
   const g = new THREE.Group();
   const s = 1 + (level - 1) * 0.18;
-  const body = box(7 * s, 4.2 * s, 6 * s, mat(0x7a1f2b)); // deep casino red
+  const body = box(7 * s, 4.2 * s, 6 * s, mat(tint || 0x7a1f2b)); // deep casino red
   body.position.y = 2.1 * s;
   g.add(body);
   const roof = box(7.4 * s, 0.7 * s, 6.4 * s, mat(0xe0b64a, { metalness: 0.4, roughness: 0.35 }));
@@ -98,11 +109,11 @@ function buildCasino(level: number): THREE.Group {
   return g;
 }
 
-function buildMine(level: number): THREE.Group {
+function buildMine(level: number, tint = 0): THREE.Group {
   const g = new THREE.Group();
   const mound = new THREE.Mesh(
     new THREE.ConeGeometry(5.2, 4.6, 7),
-    mat(0x6d5a48),
+    mat(tint || 0x6d5a48),
   );
   mound.position.y = 2.3;
   mound.castShadow = true;
@@ -155,10 +166,10 @@ function buildMine(level: number): THREE.Group {
   return g;
 }
 
-function buildShop(level: number): THREE.Group {
+function buildShop(level: number, tint = 0): THREE.Group {
   const g = new THREE.Group();
   const s = 1 + (level - 1) * 0.15;
-  const body = box(6.4 * s, 3.6 * s, 5.4 * s, mat(0xf2e3c8));
+  const body = box(6.4 * s, 3.6 * s, 5.4 * s, mat(tint || 0xf2e3c8));
   body.position.y = 1.8 * s;
   g.add(body);
   const roof = box(6.8 * s, 0.5 * s, 5.8 * s, mat(0xb4552e));
@@ -195,10 +206,10 @@ function buildShop(level: number): THREE.Group {
   return g;
 }
 
-function buildBank(level: number): THREE.Group {
+function buildBank(level: number, tint = 0): THREE.Group {
   const g = new THREE.Group();
   const s = 1 + (level - 1) * 0.15;
-  const body = box(7.2 * s, 4.6 * s, 6 * s, mat(0xf4f1e8));
+  const body = box(7.2 * s, 4.6 * s, 6 * s, mat(tint || 0xf4f1e8));
   body.position.y = 2.3 * s;
   g.add(body);
   const cornice = box(7.8 * s, 0.5 * s, 6.6 * s, mat(0xd9d2c0));
@@ -236,12 +247,12 @@ function buildBank(level: number): THREE.Group {
   return g;
 }
 
-function buildMesh(type: BuildingType, level: number): THREE.Group {
+function buildMesh(type: BuildingType, level: number, tint = 0): THREE.Group {
   switch (type) {
-    case 'casino': return buildCasino(level);
-    case 'mine': return buildMine(level);
-    case 'shop': return buildShop(level);
-    case 'bank': return buildBank(level);
+    case 'casino': return buildCasino(level, tint);
+    case 'mine': return buildMine(level, tint);
+    case 'shop': return buildShop(level, tint);
+    case 'bank': return buildBank(level, tint);
   }
 }
 
@@ -291,6 +302,15 @@ export class Engine implements EngineApi {
   private onPlotClick: (id: number) => void;
   private onBuildClick: (id: number) => void;
   private requestReward: (b: BuildingType) => void;
+  private onNear: (info: NearInfo | null) => void;
+  private onStore: () => void;
+  private onHint: (text: string) => void;
+
+  // player
+  private player!: THREE.Group;
+  private keys = new Set<string>();
+  private inputEnabled = true;
+  private nearInfo: NearInfo | null = null;
 
   constructor(
     private container: HTMLDivElement,
@@ -298,11 +318,17 @@ export class Engine implements EngineApi {
       onPlotClick: (id: number) => void;
       onBuildClick: (id: number) => void;
       requestReward: (b: BuildingType) => void;
+      onNear: (info: NearInfo | null) => void;
+      onStore: () => void;
+      onHint: (text: string) => void;
     },
   ) {
     this.onPlotClick = cb.onPlotClick;
     this.onBuildClick = cb.onBuildClick;
     this.requestReward = cb.requestReward;
+    this.onNear = cb.onNear;
+    this.onStore = cb.onStore;
+    this.onHint = cb.onHint;
 
     this.renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'low-power' });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.75));
@@ -331,6 +357,7 @@ export class Engine implements EngineApi {
     this.controls.mouseButtons = { LEFT: THREE.MOUSE.ROTATE, MIDDLE: THREE.MOUSE.DOLLY, RIGHT: THREE.MOUSE.PAN };
 
     this.buildWorld();
+    this.makePlayer();
     this.bindEvents();
     this.loop();
   }
@@ -462,6 +489,91 @@ export class Engine implements EngineApi {
     return g;
   }
 
+  // ── player character ─────────────────────────────────────────────────────
+  private makePlayer() {
+    const g = new THREE.Group();
+    const legL = box(0.3, 0.72, 0.3, mat(0x4a6fa5)); // overalls blue
+    legL.position.set(-0.2, 0.36, 0);
+    const legR = legL.clone();
+    legR.position.x = 0.2;
+    const body = box(0.9, 1.05, 0.52, mat(0xe8b04c)); // builder vest gold
+    body.position.y = 1.25;
+    const armL = box(0.22, 0.9, 0.26, mat(0xe8b04c));
+    armL.position.set(-0.58, 1.3, 0);
+    const armR = armL.clone();
+    armR.position.x = 0.58;
+    const head = box(0.78, 0.78, 0.78, mat(0xf0c8a0));
+    head.position.y = 2.15;
+    // hard hat
+    const hat = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.48, 0.5, 0.3, 12),
+      mat(0xf4c542, { roughness: 0.5 }),
+    );
+    hat.position.y = 2.68;
+    const brim = box(0.95, 0.08, 0.95, mat(0xf4c542, { roughness: 0.5 }));
+    brim.position.y = 2.56;
+    g.add(legL, legR, body, armL, armR, head, hat, brim);
+    (g as any).legs = [legL, legR];
+    g.position.set(PLAYER_SPAWN.x, 0, PLAYER_SPAWN.z);
+    this.scene.add(g);
+    this.player = g;
+  }
+
+  setInputEnabled(v: boolean) {
+    this.inputEnabled = v;
+    if (!v) this.keys.clear();
+  }
+
+  // ── proximity / interaction ──────────────────────────────────────────────
+  private plotPos(id: number): { x: number; z: number } {
+    return PLOT_POSITIONS.find((d) => d.id === id)!;
+  }
+
+  private updateProximity() {
+    const p = this.player.position;
+    let best: NearInfo | null = null;
+    let bestD = Infinity;
+    for (const st of this.plotState) {
+      const def = this.plotPos(st.id);
+      const d = Math.hypot(p.x - def.x, p.z - def.z);
+      if (d >= INTERACT_RANGE || d >= bestD) continue;
+      const bd = BUILDING_DEFS[st.type!];
+      best = !st.type
+        ? { kind: 'plot', plotId: st.id, label: `🗺️ Empty Plot ${st.id + 1} — press E to claim` }
+        : st.done
+          ? { kind: 'done', plotId: st.id, label: `${bd.icon} ${bd.name} — press E for details` }
+          : { kind: 'site', plotId: st.id, label: `${bd.icon} Building ${bd.name} — press E to place blocks` };
+      bestD = d;
+    }
+    const ds = Math.hypot(p.x - STORE_POS.x, p.z - STORE_POS.z);
+    if (ds < STORE_RANGE && ds < bestD) {
+      best = { kind: 'store', label: '🏪 Blockville Store — press E to stake & browse blueprints' };
+    }
+    const same = (a: NearInfo | null, b: NearInfo | null) =>
+      a?.kind === b?.kind && a?.plotId === b?.plotId;
+    if (!same(best, this.nearInfo)) {
+      this.nearInfo = best;
+      this.onNear(best);
+    }
+    // highlight the nearest empty plot / site marker
+    for (const [id, v] of this.plotVisuals) {
+      if (!v.marker) continue;
+      const active = best?.plotId === id && (best.kind === 'plot' || best.kind === 'site');
+      const m = v.marker.material as THREE.MeshBasicMaterial;
+      m.color.setHex(active ? 0xffe08a : 0xffffff);
+      m.opacity = active ? 0.5 : 0.25;
+    }
+  }
+
+  private interact() {
+    const n = this.nearInfo;
+    if (!n) return;
+    if (n.kind === 'store') this.onStore();
+    else if (n.kind === 'plot') this.onPlotClick(n.plotId!);
+    else if (n.kind === 'site') this.onBuildClick(n.plotId!);
+    else if (n.kind === 'done') this.onHint('⬆️ Building upgrades arrive in a future update');
+  }
+
   // ── state sync from React ───────────────────────────────────────────────
   sync(plots: Plot[], npcTarget: number) {
     this.npcTarget = npcTarget;
@@ -482,6 +594,7 @@ export class Engine implements EngineApi {
     const slab = box(9, 0.35, 9, mat(0xb9b2a4));
     slab.position.y = 0.18;
     slab.receiveShadow = true;
+    this.clickTargets.set(slab.uuid, p.id);
     g.add(slab);
     // scaffold poles
     for (const [sx, sz] of [[-3.6, -3.6], [3.6, -3.6], [-3.6, 3.6], [3.6, 3.6]] as const) {
@@ -520,7 +633,9 @@ export class Engine implements EngineApi {
   }
 
   private updateStack(p: Plot, v: PlotVisual) {
-    while (v.stackBlocks.length < p.progress && v.site) {
+    // visual stack is capped so huge custom builds stay lightweight
+    const MAX_STACK = 40;
+    while (v.stackBlocks.length < Math.min(p.progress, MAX_STACK) && v.site) {
       const i = v.stackBlocks.length;
       const pos = this.stackPos(i);
       const colors = [0xe8b04c, 0xd97b3f, 0x9aa7b0, 0x87b9d8];
@@ -542,9 +657,12 @@ export class Engine implements EngineApi {
       v.stackBlocks = [];
     }
     const mesh = buildMesh(p.type!, p.level);
+    this.clickTargets.set(mesh.uuid, p.id);
     mesh.position.set(def.x, 0, def.z);
     // face the road
     mesh.rotation.y = def.side === 'north' ? 0 : Math.PI;
+    // custom builds: bigger investment = bigger structure
+    mesh.userData.targetScale = sizeScaleFor(p.invested, BUILDING_DEFS[p.type!].cost);
     mesh.scale.setScalar(0.01);
     this.scene.add(mesh);
     v.building = mesh;
@@ -554,6 +672,19 @@ export class Engine implements EngineApi {
   // ── interaction ─────────────────────────────────────────────────────────
   private bindEvents() {
     const dom = this.renderer.domElement;
+    // keyboard: WASD/arrows to walk, E to interact
+    window.addEventListener('keydown', (e) => {
+      const t = e.target as HTMLElement | null;
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA')) return;
+      const k = e.key.toLowerCase();
+      if (k === 'e' && this.inputEnabled && !e.repeat) this.interact();
+      if (['w', 'a', 's', 'd', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright'].includes(k)) {
+        this.keys.add(k);
+      }
+    });
+    window.addEventListener('keyup', (e) => this.keys.delete(e.key.toLowerCase()));
+    window.addEventListener('blur', () => this.keys.clear());
+
     let downAt = 0;
     dom.addEventListener('pointerdown', () => (downAt = performance.now()));
     dom.addEventListener('pointerup', (e) => {
@@ -571,6 +702,13 @@ export class Engine implements EngineApi {
         if (o) {
           const id = this.clickTargets.get(o.uuid)!;
           const st = this.plotState[id];
+          // walking matters: interact only when the player is close
+          const def = this.plotPos(id);
+          const d = Math.hypot(this.player.position.x - def.x, this.player.position.z - def.z);
+          if (d > INTERACT_RANGE + 2) {
+            this.onHint('🚶 Walk closer to interact');
+            return;
+          }
           if (st && st.type && !st.done) this.onBuildClick(id);
           else if (!st?.type) this.onPlotClick(id);
           return;
@@ -614,7 +752,17 @@ export class Engine implements EngineApi {
   private spawnVisit() {
     const done = this.plotState.filter((p) => p.done && p.type);
     if (done.length === 0) return;
-    const target = done[randInt(0, done.length - 1)];
+    // bigger investment attracts more visitors: weighted pick by blocks committed
+    const totalW = done.reduce((s, p) => s + p.invested, 0);
+    let roll = Math.random() * totalW;
+    let target = done[0];
+    for (const p of done) {
+      roll -= p.invested;
+      if (roll <= 0) {
+        target = p;
+        break;
+      }
+    }
     const def = PLOT_POSITIONS.find((d) => d.id === target.id)!;
     // entrance point just in front of the building (toward the road)
     const entrance = new THREE.Vector3(def.x, 0, def.side === 'north' ? def.z + 4.6 : def.z - 4.6);
@@ -676,6 +824,72 @@ export class Engine implements EngineApi {
 
   // ── per-frame ───────────────────────────────────────────────────────────
   private step(dt: number) {
+    // ── player movement (camera-relative WASD) ─────────────────────────────
+    const pl = this.player;
+    const before = pl.position.clone();
+    if (this.inputEnabled) {
+      const fwd = new THREE.Vector3().subVectors(this.controls.target, this.camera.position);
+      fwd.y = 0;
+      if (fwd.lengthSq() < 0.001) fwd.set(0, 0, -1);
+      fwd.normalize();
+      const right = new THREE.Vector3(fwd.z, 0, -fwd.x);
+      const move = new THREE.Vector3();
+      const k = this.keys;
+      if (k.has('w') || k.has('arrowup')) move.add(fwd);
+      if (k.has('s') || k.has('arrowdown')) move.sub(fwd);
+      if (k.has('d') || k.has('arrowright')) move.add(right);
+      if (k.has('a') || k.has('arrowleft')) move.sub(right);
+      if (move.lengthSq() > 0) {
+        move.normalize();
+        pl.position.addScaledVector(move, 9 * dt);
+        // face walking direction
+        pl.rotation.y = Math.atan2(move.x, move.z);
+        // walk animation
+        const legs: THREE.Mesh[] = (pl as any).legs ?? [];
+        pl.userData.phase = (pl.userData.phase ?? 0) + dt * 10;
+        const sw = Math.sin(pl.userData.phase) * 0.55;
+        if (legs.length === 2) {
+          legs[0].rotation.x = sw;
+          legs[1].rotation.x = -sw;
+        }
+        pl.position.y = Math.abs(Math.sin(pl.userData.phase)) * 0.07;
+      } else {
+        const legs: THREE.Mesh[] = (pl as any).legs ?? [];
+        if (legs.length === 2) {
+          legs[0].rotation.x *= 0.8;
+          legs[1].rotation.x *= 0.8;
+        }
+        pl.position.y *= 0.8;
+      }
+    }
+    // keep the player inside the playable area
+    pl.position.x = Math.max(-55, Math.min(55, pl.position.x));
+    pl.position.z = Math.max(-38, Math.min(38, pl.position.z));
+    // simple push-out collision vs the store, trees and completed buildings
+    const colliders: [number, number, number][] = [[STORE_POS.x, STORE_POS.z, 6.8]];
+    for (const st of this.plotState) {
+      if (!st.done) continue;
+      const def = this.plotPos(st.id);
+      colliders.push([def.x, def.z, 5.4]);
+    }
+    for (const [cx, cz, r] of colliders) {
+      const dx = pl.position.x - cx;
+      const dz = pl.position.z - cz;
+      const d = Math.hypot(dx, dz);
+      if (d < r && d > 0.001) {
+        pl.position.x = cx + (dx / d) * r;
+        pl.position.z = cz + (dz / d) * r;
+      }
+    }
+
+    // ── camera follows the player, orbit stays free ────────────────────────
+    const head = new THREE.Vector3(pl.position.x, 2.4, pl.position.z);
+    const prevTarget = this.controls.target.clone();
+    this.controls.target.lerp(head, 1 - Math.pow(0.0005, dt));
+    this.camera.position.add(this.controls.target.clone().sub(prevTarget));
+
+    this.updateProximity();
+
     // block drop-in animation
     for (const [, v] of this.plotVisuals) {
       if (v.site) {
@@ -690,7 +904,7 @@ export class Engine implements EngineApi {
         v.popT += dt * 2.2;
         const e = 1 - Math.pow(1 - Math.min(1, v.popT), 3);
         const overshoot = 1 + Math.sin(Math.min(1, v.popT) * Math.PI) * 0.12;
-        v.building.scale.setScalar(e * overshoot);
+        v.building.scale.setScalar(e * overshoot * (v.building.userData.targetScale ?? 1));
       }
     }
 

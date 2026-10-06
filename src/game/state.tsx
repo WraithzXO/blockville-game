@@ -10,6 +10,7 @@ import {
   BUILDING_DEFS,
   CONFIG,
   PLOT_POSITIONS,
+  rewardMultFor,
   type BuildingType,
 } from './config';
 
@@ -19,6 +20,8 @@ export interface Plot {
   progress: number;   // blocks placed so far
   done: boolean;
   level: number;      // foundation for future upgrades
+  invested: number;   // total blocks committed (preset cost or custom amount)
+  tint: number;       // 0 = signature colour, else custom body colour
 }
 
 export interface FeedItem {
@@ -44,24 +47,27 @@ interface State {
   feed: FeedItem[];
   toasts: Toast[];
   selectedPlot: number | null;
+  storeOpen: boolean;
 }
 
 type Action =
   | { t: 'setMode'; mode: 'demo' | 'wallet' }
   | { t: 'stake'; amount: number }
-  | { t: 'claim'; plot: number; type: BuildingType }
+  | { t: 'claim'; plot: number; type: BuildingType; invested: number; tint: number }
   | { t: 'buildClick'; plot: number }
   | { t: 'selectPlot'; plot: number | null }
   | { t: 'npcReward'; building: BuildingType; amount: number }
   | { t: 'feed'; icon: string; text: string; detail: string }
   | { t: 'toast'; text: string }
-  | { t: 'toastGone'; id: number };
+  | { t: 'toastGone'; id: number }
+  | { t: 'openStore' }
+  | { t: 'closeStore' };
 
 let uid = 1;
 const nextId = () => uid++;
 
 const emptyPlots = (): Plot[] =>
-  PLOT_POSITIONS.map((p) => ({ id: p.id, type: null, progress: 0, done: false, level: 1 }));
+  PLOT_POSITIONS.map((p) => ({ id: p.id, type: null, progress: 0, done: false, level: 1, invested: 0, tint: 0 }));
 
 const initial: State = {
   mode: null,
@@ -74,6 +80,7 @@ const initial: State = {
   feed: [],
   toasts: [],
   selectedPlot: null,
+  storeOpen: false,
 };
 
 function reducer(s: State, a: Action): State {
@@ -106,20 +113,23 @@ function reducer(s: State, a: Action): State {
     }
     case 'claim': {
       const def = BUILDING_DEFS[a.type];
-      if (s.blocks < def.cost) return s;
+      const invested = Math.max(def.cost, Math.min(a.invested, s.blocks));
+      if (s.blocks < invested || invested < def.cost) return s;
       return {
         ...s,
-        blocks: s.blocks - def.cost,
+        blocks: s.blocks - invested,
         selectedPlot: null,
         plots: s.plots.map((p) =>
-          p.id === a.plot ? { ...p, type: a.type, progress: 0, done: false } : p,
+          p.id === a.plot
+            ? { ...p, type: a.type, progress: 0, done: false, invested, tint: a.tint }
+            : p,
         ),
         feed: [
           {
             id: nextId(),
             icon: def.icon,
             text: `${def.name} claimed on plot ${a.plot + 1}`,
-            detail: `Site cleared — ${def.cost} blocks to build`,
+            detail: `Site cleared — ${invested} blocks committed (${a.tint ? 'custom design' : 'preset'})`,
           },
           ...s.feed,
         ].slice(0, 8),
@@ -128,15 +138,17 @@ function reducer(s: State, a: Action): State {
     case 'buildClick': {
       const plots = s.plots.map((p) => {
         if (p.id !== a.plot || !p.type || p.done || s.blocks <= 0) return p;
-        const def = BUILDING_DEFS[p.type];
-        const progress = p.progress + 1;
-        const done = progress >= def.cost;
+        const place = Math.min(CONFIG.blocksPerClick, s.blocks, p.invested - p.progress);
+        if (place <= 0) return p;
+        const progress = p.progress + place;
+        const done = progress >= p.invested;
         return { ...p, progress, done };
       });
       if (plots.every((p, i) => p === s.plots[i])) return s; // nothing consumed
       const finished = plots.find((p, i) => p.done && !s.plots[i].done);
       const completed = finished?.type ?? null;
-      const base: State = { ...s, blocks: s.blocks - 1, plots };
+      // blocks were already committed at claim time — placing them costs nothing extra
+      const base: State = { ...s, plots };
       if (completed) {
         const def = BUILDING_DEFS[completed];
         return {
@@ -157,21 +169,28 @@ function reducer(s: State, a: Action): State {
     }
     case 'selectPlot':
       return { ...s, selectedPlot: a.plot };
+    case 'openStore':
+      return { ...s, storeOpen: true };
+    case 'closeStore':
+      return { ...s, storeOpen: false };
     case 'npcReward': {
       const def = BUILDING_DEFS[a.building];
+      const plot = s.plots.find((p) => p.type === a.building && p.done);
+      // Bigger investment = bigger share of the fee pool (capped in config)
+      const mult = plot ? rewardMultFor(plot.invested, def.cost) : 1;
       return {
         ...s,
-        balance: s.balance + a.amount,
+        balance: s.balance + a.amount * mult,
         feed: [
           {
             id: nextId(),
             icon: '💰',
             text: `${def.name} activity completed`,
-            detail: `You received +${a.amount.toFixed(2)} $BLOCKVILLE in fees`,
+            detail: `You received +${(a.amount * mult).toFixed(2)} $BLOCKVILLE in fees${mult > 1.01 ? ` (${mult.toFixed(1)}x share)` : ''}`,
           },
           ...s.feed,
         ].slice(0, 8),
-        toasts: [...s.toasts, { id: nextId(), text: `💰 +${a.amount.toFixed(2)} $BLOCKVILLE` }],
+        toasts: [...s.toasts, { id: nextId(), text: `💰 +${(a.amount * mult).toFixed(2)} $BLOCKVILLE` }],
       };
     }
     case 'feed':
@@ -186,6 +205,7 @@ function reducer(s: State, a: Action): State {
 // ── Engine bridge ──────────────────────────────────────────────────────────
 export interface EngineApi {
   sync: (plots: Plot[], npcTarget: number) => void;
+  setInputEnabled: (v: boolean) => void;
   dispose: () => void;
 }
 

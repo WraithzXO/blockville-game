@@ -8,6 +8,11 @@ export const CONFIG = {
   stakeMin: 20_000,          // $BLOCKVILLE needed to become a Builder
   starterBlocks: 120,        // blocks granted on becoming a Builder
 
+  // Building / construction
+  blocksPerClick: 5,         // blocks placed per build action (click or E key)
+  rewardMultCap: 3,          // max fee-share multiplier for heavily-invested buildings
+  sizeScaleMax: 1.9,         // max visual size scale for custom builds
+
   // Fee rewards (demo placeholder — NOT real on-chain rewards)
   feeChance: 0.35,           // chance an NPC visit generates a fee share
   feeMin: 0.02,
@@ -22,6 +27,32 @@ export const CONFIG = {
   bubbleTimeMin: 1.5,        // seconds a chat bubble stays visible
   bubbleTimeMax: 3.0,
 } as const;
+
+// ── custom build helpers ───────────────────────────────────────────────────
+// Reward share and visual size both scale with blocks invested vs the preset cost.
+export const rewardMultFor = (invested: number, presetCost: number) =>
+  Math.min(CONFIG.rewardMultCap, Math.max(1, invested / presetCost));
+
+export const sizeScaleFor = (invested: number, presetCost: number) =>
+  Math.min(CONFIG.sizeScaleMax, Math.max(1, 1 + (invested / presetCost - 1) * 0.45));
+
+export const sizeLabelFor = (invested: number, presetCost: number) => {
+  const r = invested / presetCost;
+  if (r >= 2.5) return 'GRAND';
+  if (r >= 1.6) return 'BIG';
+  if (r > 1.05) return 'ROOMY';
+  return 'STANDARD';
+};
+
+// Optional custom colour tints for "build it your way"
+export const TINTS: { name: string; hex: number }[] = [
+  { name: 'Classic', hex: 0 },   // 0 = use the building's signature colour
+  { name: 'Cherry', hex: 0xc0392b },
+  { name: 'Sky', hex: 0x4a90d9 },
+  { name: 'Lime', hex: 0x5fae4e },
+  { name: 'Royal', hex: 0x7d4fc1 },
+  { name: 'Gold', hex: 0xd4a017 },
+];
 
 export interface BuildingDef {
   name: string;
@@ -110,6 +141,13 @@ export const PLOT_POSITIONS: PlotDef[] = [
 ];
 
 export const STORE_POS = { x: 0, z: -22 };
+
+// Player spawn: just outside the store, facing the town
+export const PLAYER_SPAWN = { x: 0, z: -13 };
+
+// Interaction ranges (world units) for the walk-up system
+export const INTERACT_RANGE = 11;     // plots / construction sites
+export const STORE_RANGE = 13;        // Blockville Store
 
 export const TOWN_STAGES: { min: number; label: string }[] = [
   { min: 0, label: 'Outpost' },

@@ -1,5 +1,5 @@
-import { useEffect, useRef } from 'react';
-import { Engine } from './engine';
+import { useEffect, useRef, useState } from 'react';
+import { Engine, type NearInfo } from './engine';
 import { CONFIG } from './config';
 import { useEngineBridge, useGame, type EngineApi, type Plot } from './state';
 
@@ -8,6 +8,7 @@ export default function GameCanvas() {
   const { state, dispatch } = useGame();
   const bridge = useEngineBridge();
   const engineRef = useRef<Engine | null>(null);
+  const [near, setNear] = useState<NearInfo | null>(null);
 
   // latest-state refs for engine callbacks
   const stateRef = useRef(state);
@@ -22,6 +23,9 @@ export default function GameCanvas() {
       },
       onBuildClick: (id) => dispatch({ t: 'buildClick', plot: id }),
       requestReward: (b) => bridge.rewardBridge().requestReward(b),
+      onNear: (info) => setNear(info),
+      onStore: () => dispatch({ t: 'openStore' }),
+      onHint: (text) => dispatch({ t: 'toast', text }),
     });
     engineRef.current = engine;
     bridge.setEngine(engine as EngineApi);
@@ -39,7 +43,25 @@ export default function GameCanvas() {
     engineRef.current?.sync(state.plots, Math.min(CONFIG.maxNpcs, target));
   }, [state.plots]);
 
-  return <div className="game-canvas" ref={containerRef} data-testid="game-canvas" />;
+  // keyboard input is off while a modal owns the screen
+  useEffect(() => {
+    const blocked = !state.builder || state.mode === 'wallet';
+    engineRef.current?.setInputEnabled(!blocked);
+  }, [state.builder, state.mode]);
+
+  return (
+    <>
+      <div className="game-canvas" ref={containerRef} data-testid="game-canvas" />
+      {state.builder && (
+        <div className="controls-hint">WASD / arrows walk · E interact · drag orbit</div>
+      )}
+      {near && (
+        <div className="near-prompt" data-testid="near-prompt">
+          {near.label}
+        </div>
+      )}
+    </>
+  );
 }
 
 export type { Plot };

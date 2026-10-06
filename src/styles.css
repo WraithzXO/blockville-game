@@ -148,6 +148,58 @@ body { font-family: var(--ui-font); overflow: hidden; background: #8fd0f0; }
 .claim-cost { font-size: 11px; font-weight: 700; color: var(--gold); margin-top: 6px; }
 .claim-note { margin-top: 10px; font-size: 12px; color: #ffd88a; }
 
+/* walk-up interaction prompt + controls hint */
+.near-prompt {
+  position: absolute; bottom: 92px; left: 50%; transform: translateX(-50%);
+  z-index: 20; pointer-events: none;
+  background: var(--panel); color: #fff; font-size: 13px; font-weight: 700;
+  border: 2px solid var(--gold); border-radius: 10px; padding: 8px 14px;
+  white-space: nowrap;
+  animation: pop 0.2s ease-out;
+}
+.controls-hint {
+  position: absolute; bottom: 12px; right: 14px; z-index: 10; pointer-events: none;
+  font-size: 11px; font-weight: 600; color: #dfe8f0;
+  background: rgba(24, 30, 38, 0.6); padding: 5px 10px; border-radius: 8px;
+}
+
+/* store panel extras */
+.store-stats {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 6px 12px;
+  font-size: 13px; color: var(--ink); background: #fff; border: 2px solid var(--ink);
+  border-radius: 8px; padding: 10px 12px; margin-bottom: 12px;
+}
+.bp-title { font-size: 10px; font-weight: 800; letter-spacing: 1.5px; color: #6b6250; margin-bottom: 6px; }
+.bp-list { display: flex; flex-direction: column; gap: 6px; margin-bottom: 4px; }
+.bp-item {
+  display: flex; align-items: center; gap: 10px; background: #fff;
+  border: 2px solid var(--ink); border-radius: 8px; padding: 7px 10px;
+}
+.bp-icon { font-size: 18px; }
+.bp-info { flex: 1; }
+.bp-info b { display: block; font-size: 13px; color: var(--ink); }
+.bp-info small { color: #6b6250; }
+.bp-cost { font-weight: 800; font-size: 12px; color: var(--ink); white-space: nowrap; }
+
+/* custom build controls */
+.tint-row { display: flex; gap: 8px; margin: 10px 0 4px; }
+.swatch {
+  width: 30px; height: 30px; border-radius: 8px; cursor: pointer;
+  border: 2px solid rgba(0,0,0,0.35);
+}
+.swatch.on { border: 3px solid var(--gold); box-shadow: inset 0 0 0 2px #fff; }
+.build-summary {
+  display: flex; flex-wrap: wrap; gap: 6px 14px; margin: 10px 0 6px;
+  font-size: 12.5px; font-weight: 700; color: #e8eef4;
+}
+.build-summary .mult { color: #7fe08f; }
+.claim-menu .hint-row { color: #a9b7c2; }
+.link-btn {
+  width: 100%; margin-top: 8px; padding: 8px; font-size: 12.5px; font-weight: 700;
+  background: none; border: none; color: #6b6250; cursor: pointer; text-align: center;
+}
+.link-btn:hover { color: var(--ink); }
+
 /* build hud */
 .build-hud {
   position: absolute; bottom: 18px; left: 50%; transform: translateX(-50%);
