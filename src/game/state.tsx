@@ -72,6 +72,7 @@ interface State {
   treasury: { balance: number; ledger: FeedItem[] };
   treasuryOpen: boolean;
   stakeMoreOpen: boolean;
+  stakeDockClosed: boolean;    // pre-stake store dock hidden by the player
   lastDistribution: { total: number; yourShare: number } | null;
   nearPlot: number | null;     // plot the resident is standing next to
 }
@@ -94,6 +95,7 @@ type Action =
   | { t: 'upgrade'; plot: number }
   | { t: 'setTreasuryOpen'; open: boolean }
   | { t: 'setStakeMoreOpen'; open: boolean }
+  | { t: 'setStakeDockClosed'; closed: boolean }
   | { t: 'treasuryIn'; amount: number; label: string; detail: string }
   | { t: 'treasuryDistribute'; total: number; yourShare: number }
   | { t: 'setLook'; look: PlayerLook }
@@ -152,6 +154,7 @@ const initial: State = {
   treasury: { balance: 0, ledger: [] },
   treasuryOpen: false,
   stakeMoreOpen: false,
+  stakeDockClosed: false,
   lastDistribution: null,
   nearPlot: null,
 };
@@ -272,6 +275,8 @@ function reducer(s: State, a: Action): State {
       return { ...s, nearPlot: a.plot };
     case 'setStakeMoreOpen':
       return { ...s, stakeMoreOpen: a.open };
+    case 'setStakeDockClosed':
+      return { ...s, stakeDockClosed: a.closed };
     case 'upgrade': {
       const plot = s.plots.find((p) => p.id === a.plot);
       if (!plot || plot.owner !== 'you' || !plot.done || !plot.type) return s;

@@ -120,66 +120,68 @@ function StakeModal() {
   const [amount, setAmount] = useState<number>(CONFIG.stakeMin);
   const canStake = amount >= CONFIG.stakeMin && amount <= state.balance && !state.builder;
 
+  // once you're a Builder the dock makes way for the game
+  if (state.builder) return null;
+  // you can close it and just wander town — reopen it from the top bar
+  if (state.stakeDockClosed) return null;
+
   return (
-    <div className="backdrop">
-      <div className="modal">
-        <div className="modal-head plain">
-          <div className="modal-title">
-            <span className="modal-icon">🏪</span>
-            <h2>Blockville Store</h2>
-          </div>
+    <div className="dock stake-dock panel">
+      <div className="panel-head">
+        <span>🏪 Blockville Store</span>
+        <button className="x" title="Close — reopen from the 🔒 button" onClick={() => dispatch({ t: 'setStakeDockClosed', closed: true })}>✕</button>
+      </div>
+      <div className="stake-body">
+        <p className="dock-note">
+          Stake <b>{CONFIG.stakeMin.toLocaleString()} $BLOCKVILLE</b> to become a <b>Builder</b> —
+          receive starter blocks, claim a plot, and put up buildings the town will use.
+          Feel free to walk around town while you decide.
+        </p>
+        <div className="tabs">
+          <button
+            className={`tab ${state.mode !== 'wallet' ? 'active' : ''}`}
+            onClick={() => dispatch({ t: 'setMode', mode: 'demo' })}
+          >
+            Demo mode
+          </button>
+          <button
+            className={`tab ${state.mode === 'wallet' ? 'active' : ''}`}
+            onClick={() => dispatch({ t: 'setMode', mode: 'wallet' })}
+          >
+            Connect wallet
+          </button>
         </div>
-        <div className="modal-body">
-          <p className="lede">
-            Stake <b>{CONFIG.stakeMin.toLocaleString()} $BLOCKVILLE</b> to become a <b>Builder</b> —
-            receive starter blocks, claim a plot, and put up buildings the town will use.
-          </p>
-          <div className="tabs">
-            <button
-              className={`tab ${state.mode !== 'wallet' ? 'active' : ''}`}
-              onClick={() => dispatch({ t: 'setMode', mode: 'demo' })}
-            >
-              Demo mode
-            </button>
-            <button
-              className={`tab ${state.mode === 'wallet' ? 'active' : ''}`}
-              onClick={() => dispatch({ t: 'setMode', mode: 'wallet' })}
-            >
-              Connect wallet
-            </button>
-          </div>
-          {state.mode === 'wallet' ? (
-            <WalletPanel />
-          ) : (
-            <>
-              <div className="field-row">
-                <input
-                  type="number"
-                  value={amount}
-                  min={0}
-                  onChange={(e) => setAmount(Math.max(0, Math.floor(Number(e.target.value) || 0)))}
-                />
-                <span className="token">$BLOCKVILLE</span>
-              </div>
-              <div className="hint-row">
-                <span>Minimum {CONFIG.stakeMin.toLocaleString()}</span>
-                <span>Demo balance {state.balance.toLocaleString()}</span>
-              </div>
+        {state.mode === 'wallet' ? (
+          <WalletPanel />
+        ) : (
+          <>
+            <div className="field-row">
               <input
-                className="slider"
-                type="range"
-                min={CONFIG.stakeMin}
-                max={state.balance}
-                step={1000}
-                value={Math.min(amount, state.balance)}
-                onChange={(e) => setAmount(Number(e.target.value))}
+                type="number"
+                value={amount}
+                min={0}
+                onChange={(e) => setAmount(Math.max(0, Math.floor(Number(e.target.value) || 0)))}
               />
-              <button className="btn primary" disabled={!canStake} onClick={() => dispatch({ t: 'stake', amount })}>
-                {state.builder ? 'You are a Builder ✓' : `Stake ${amount.toLocaleString()} → become a Builder`}
-              </button>
-            </>
-          )}
-        </div>
+              <span className="token">$BLOCKVILLE</span>
+            </div>
+            <div className="hint-row">
+              <span>Minimum {CONFIG.stakeMin.toLocaleString()}</span>
+              <span>Demo balance {state.balance.toLocaleString()}</span>
+            </div>
+            <input
+              className="slider"
+              type="range"
+              min={CONFIG.stakeMin}
+              max={state.balance}
+              step={1000}
+              value={Math.min(amount, state.balance)}
+              onChange={(e) => setAmount(Number(e.target.value))}
+            />
+            <button className="btn primary" disabled={!canStake} onClick={() => dispatch({ t: 'stake', amount })}>
+              Stake {amount.toLocaleString()} → become a Builder
+            </button>
+          </>
+        )}
       </div>
     </div>
   );
@@ -739,10 +741,14 @@ function TopBar() {
             </button>
             <button
               className="mbtn"
-              onClick={() => dispatch({ t: 'setStakeMoreOpen', open: true })}
-              title="Stake more to unlock another block of land"
+              onClick={() =>
+                state.builder
+                  ? dispatch({ t: 'setStakeMoreOpen', open: true })
+                  : dispatch({ t: 'setStakeDockClosed', closed: false })
+              }
+              title={state.builder ? 'Stake more to unlock another block of land' : 'Open the Blockville Store to stake'}
             >
-              🔒 <span>Stake more</span>
+              🔒 <span>{state.builder ? 'Stake more' : 'Stake'}</span>
             </button>
             <div className={`badge ${state.builder ? 'on' : ''}`}>{state.builder ? 'BUILDER' : 'VISITOR'}</div>
           </div>
@@ -790,9 +796,6 @@ function Shell() {
   const { state } = useGame();
   // any full-screen modal pauses walking; the claim dock stays walk-friendly
   const modalOpen =
-    state.mode === null ||
-    state.mode === 'wallet' ||
-    !state.builder ||
     state.storeOpen ||
     state.marketOpen ||
     state.treasuryOpen ||
@@ -802,7 +805,10 @@ function Shell() {
     <div className="app">
       <GameCanvas inputEnabled={!modalOpen} />
       {state.mode !== 'wallet' && <TopBar />}
-      {(!state.builder || state.mode === 'wallet') && <StakeModal />}
+      {state.mode !== 'wallet' && <StakeModal />}
+      {state.mode === 'wallet' && !state.builder && <StakeModal />}
+      <InteractPrompt modalOpen={modalOpen} />
+      <WalkHint modalOpen={modalOpen} />
       <ClaimMenu />
       <StorePanel />
       <MarketplacePanel />
@@ -811,6 +817,52 @@ function Shell() {
       <CustomiseModal />
       {state.builder && <Feed />}
       <Toasts />
+    </div>
+  );
+}
+
+// ── E-to-interact prompt (the plot you're standing next to) ────────────────
+function InteractPrompt({ modalOpen }: { modalOpen: boolean }) {
+  const { state } = useGame();
+  if (modalOpen || state.nearPlot === null) return null;
+  const plot = state.plots.find((p) => p.id === state.nearPlot);
+  if (!plot) return null;
+  let label: string | null = null;
+  if (plot.owner === 'other') label = 'Resident-owned plot';
+  else if (plot.type && !plot.done) label = 'Build';
+  else if (plot.type && plot.done && plot.owner === 'you') {
+    const def = BUILDING_DEFS[plot.type];
+    label = `Open ${def.name}`;
+  } else if (!plot.type) label = state.builder ? 'Claim plot' : null;
+  if (!label) return null;
+  const interactive = label !== 'Resident-owned plot';
+  return (
+    <div className={`interact-prompt ${interactive ? '' : 'plain'}`}>
+      {interactive && <kbd>E</kbd>} {interactive ? '' : '🔒 '}{label}
+    </div>
+  );
+}
+
+// ── first-run controls hint, fades after you start moving ──────────────────
+function WalkHint({ modalOpen }: { modalOpen: boolean }) {
+  const [gone, setGone] = useState(false);
+  useEffect(() => {
+    if (gone) return;
+    const keys = ['w', 'a', 's', 'd', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright'];
+    const h = (e: KeyboardEvent) => {
+      if (keys.includes(e.key.toLowerCase())) setGone(true);
+    };
+    window.addEventListener('keydown', h);
+    const t = setTimeout(() => setGone(true), 20000);
+    return () => {
+      window.removeEventListener('keydown', h);
+      clearTimeout(t);
+    };
+  }, [gone]);
+  if (gone || modalOpen) return null;
+  return (
+    <div className="walk-hint">
+      <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> walk · <span>drag</span> orbit · <span>scroll</span> zoom
     </div>
   );
 }

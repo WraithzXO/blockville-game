@@ -748,6 +748,7 @@ export class Engine implements EngineApi {
   private player?: THREE.Group;
   private playerLook: PlayerLook;
   private keys = new Set<string>();
+  private vel = new THREE.Vector2(); // smoothed WASD velocity (x, z)
   private inputEnabled = true;
   private nearbyId: number | null = null;
   private nearbyClock = 0;
@@ -1244,6 +1245,13 @@ export class Engine implements EngineApi {
         (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable);
       if (typing || !this.inputEnabled || e.repeat) return;
       const k = e.key.toLowerCase();
+      // E interacts with the plot you're standing next to
+      if (k === 'e' && this.nearbyId !== null) {
+        const st = this.plotState[this.nearbyId];
+        if (st && st.type && !st.done) this.onBuildClick(this.nearbyId);
+        else if (!st?.type || st.owner === 'you') this.onPlotClick(this.nearbyId);
+        return;
+      }
       if (walkKey(k)) {
         this.keys.add(k);
         e.preventDefault();
@@ -1544,6 +1552,7 @@ export class Engine implements EngineApi {
       const arms: THREE.Mesh[] = p.userData.arms ?? [];
       let mx = 0;
       let mz = 0;
+      let moving = false;
       if (this.inputEnabled) {
         const fwd =
           (this.keys.has('w') || this.keys.has('arrowup') ? 1 : 0) -
@@ -1560,20 +1569,30 @@ export class Engine implements EngineApi {
           const dir = view.multiplyScalar(fwd).add(right.multiplyScalar(side)).normalize();
           mx = dir.x;
           mz = dir.z;
+          moving = true;
         }
       }
-      if (mx || mz) {
-        p.position.x = THREE.MathUtils.clamp(p.position.x + mx * CONFIG.walkSpeed * dt, -CONFIG.worldBounds, CONFIG.worldBounds);
-        p.position.z = THREE.MathUtils.clamp(p.position.z + mz * CONFIG.walkSpeed * dt, -CONFIG.worldBounds, CONFIG.worldBounds);
+      // smooth acceleration / deceleration instead of instant start-stop
+      const rate = moving ? 9 : 13;
+      this.vel.x += (mx - this.vel.x) * Math.min(1, dt * rate);
+      this.vel.y += (mz - this.vel.y) * Math.min(1, dt * rate);
+      const speed = this.vel.length();
+      if (speed > 0.01) {
+        const nx = p.position.x + this.vel.x * CONFIG.walkSpeed * dt;
+        const nz = p.position.z + this.vel.y * CONFIG.walkSpeed * dt;
+        p.position.x = THREE.MathUtils.clamp(nx, -CONFIG.worldBounds, CONFIG.worldBounds);
+        p.position.z = THREE.MathUtils.clamp(nz, -CONFIG.worldBounds, CONFIG.worldBounds);
         this.resolveCollisions(p.position);
-        // face where you're heading, turning smoothly
-        const targetYaw = Math.atan2(mx, mz);
-        let d = targetYaw - p.rotation.y;
-        while (d > Math.PI) d -= Math.PI * 2;
-        while (d < -Math.PI) d += Math.PI * 2;
-        p.rotation.y += d * Math.min(1, dt * 12);
-        // walk cycle
-        const sw = Math.sin(this.clock.elapsedTime * 11) * 0.55;
+        if (moving) {
+          // face where you're heading, turning smoothly
+          const targetYaw = Math.atan2(mx, mz);
+          let d = targetYaw - p.rotation.y;
+          while (d > Math.PI) d -= Math.PI * 2;
+          while (d < -Math.PI) d += Math.PI * 2;
+          p.rotation.y += d * Math.min(1, dt * 12);
+        }
+        // walk cycle scales with actual speed
+        const sw = Math.sin(this.clock.elapsedTime * 11) * 0.55 * Math.min(1, speed * 1.6);
         if (legs.length === 2) {
           legs[0].rotation.x = sw;
           legs[1].rotation.x = -sw;
@@ -1583,6 +1602,7 @@ export class Engine implements EngineApi {
           arms[1].rotation.x = sw * 0.65;
         }
       } else {
+        this.vel.set(0, 0);
         // limbs ease back to rest, gentle idle breathing
         for (const l of [...legs, ...arms]) l.rotation.x *= Math.max(0, 1 - dt * 10);
         p.position.y = Math.abs(Math.sin(this.clock.elapsedTime * 1.6)) * 0.06;
