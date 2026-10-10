@@ -1,4 +1,5 @@
 import { makeYardFeature, makeYardFence, type FenceBlock } from '../plots/PlotDecor';
+import { nextBubbleNear } from './bubbleRange';
 import { featureRect, type PlacedFeature } from '../plots/PlotLayout';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
@@ -7,6 +8,7 @@ import {
   CONFIG,
   PAVED_Z_BANDS,
   PLOT_POSITIONS,
+  RETIRED_PLOT_IDS,
   STORE_POS,
   pickActivity,
   randInt,
@@ -24,7 +26,7 @@ import { buildMesh, placeOnPlot, plotRoom, fitToPlot } from '../buildings/Buildi
 import { terrainH } from '../world/WorldTerrain';
 import { buildSkyAndLights } from '../world/WorldSky';
 import { buildGround } from '../world/WorldGround';
-import { buildRoads } from '../world/WorldRoads';
+import { buildRoads, buildStoreForecourts } from '../world/WorldRoads';
 import { buildFence } from '../world/WorldFence';
 import { buildTownTrees, buildBoundaryTrees } from '../world/WorldTrees';
 import { canWalk, groundY } from '../world/WorldTerrain';
@@ -47,6 +49,7 @@ interface Npc {
   exit: THREE.Vector3;
   dwellLeft: number;
   bubble?: HTMLDivElement;
+  bubbleNear?: boolean;       // player is inside the chat-bubble range (with hysteresis)
   speed: number;
   phase: number;
   building: BuildingType | null;
@@ -69,6 +72,11 @@ function cdKey(o: { kind: string; x: number; z: number }) { return `${o.kind}:${
 function cdRemainingSec(o: { kind: string; x: number; z: number }) { const t = cdLoad()[cdKey(o)] || 0; return Math.max(0, Math.ceil((t - Date.now()) / 1000)); }
 function cdStart(o: { kind: string; x: number; z: number }, sec: number) { const m = cdLoad(); m[cdKey(o)] = Date.now() + sec * 1000; try { localStorage.setItem(CD_KEY, JSON.stringify(m)); } catch { /* ignore */ } }
 function cdText(sec: number) { const m = Math.floor(sec / 60), s = sec % 60; return m > 0 ? `${m}m ${s}s` : `${s}s`; }
+
+// Park benches are 20% larger than before and turned to face the main road
+// (+Z) so sitters look out at the street. Seat height follows the scale.
+const BENCH_SCALE = 1.2;
+const BENCH_SEAT_Y = 0.62 * BENCH_SCALE - 0.76; // seat top minus hip height
 
 // ── small interactive world objects (benches, mailboxes, signs, …) ──────────
 type ObjKind = 'bench' | 'fountain' | 'mailbox' | 'sign' | 'trash' | 'notice' | 'shopkeeper';
@@ -172,6 +180,8 @@ export class Engine implements EngineApi {
   private treeLeaves: THREE.Object3D[] = [];
   private storeFadeMats: THREE.MeshStandardMaterial[] = [];
   private insideStore = false;
+  private storeLights: THREE.Light[] = [];
+  private furnitureLights: THREE.Light[] = [];
   private furnitureFadeMats: THREE.MeshStandardMaterial[] = [];
   private insideFurnitureStore = false;
   private sitting: TownObj | null = null;
@@ -235,7 +245,9 @@ export class Engine implements EngineApi {
     });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.75));
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
-    this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    // Neutral tone mapping keeps the palette's greens, reds and blues true,
+    // where ACES washed grass and the sky towards beige.
+    this.renderer.toneMapping = THREE.NeutralToneMapping;
     this.renderer.toneMappingExposure = 1.0;
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -348,6 +360,7 @@ export class Engine implements EngineApi {
     buildGround(this.scene);
 
     buildRoads(this.scene);
+    buildStoreForecourts(this.scene);
 
     buildFence(this.scene);
 
@@ -398,6 +411,8 @@ export class Engine implements EngineApi {
       makeNpcMesh: (look) => this.makeNpcMesh(look),
       onShopkeeper: (keeper) => { this.shopkeeper = keeper; },
       scene: this.scene,
+      storeLights: this.storeLights,
+      furnitureLights: this.furnitureLights,
     });
     const perches = this.treeLeaves.map((l) => {
       const wp = new THREE.Vector3();
@@ -417,6 +432,7 @@ export class Engine implements EngineApi {
     // plot markers — clipped so no marker or border ever covers a road or sidewalk
     const paved = PAVED_Z_BANDS;
     for (const p of PLOT_POSITIONS) {
+      if (RETIRED_PLOT_IDS.includes(p.id)) continue;
       this.plotPos.set(p.id, { x: p.x, z: p.z });
       // invisible click plane — one per plot, sized to leave a clear gap between plots
       const clickPlane = new THREE.Mesh(
@@ -536,8 +552,9 @@ export class Engine implements EngineApi {
     this.scene.add(fg);
     addObj({ kind: 'fountain', group: fg, label: 'Interact', x: 0, z: -10, coolUntil: 0 }, { hw: 2.45, hd: 2.45 });
 
-    // benches facing the fountain
-    for (const [bx, faceYaw] of [[-4.9, Math.PI / 2], [4.9, -Math.PI / 2]] as const) {
+    // benches in the plaza, facing the main road so sitters look out at the street
+    for (const bx of [-4.9, 4.9]) {
+      const faceYaw = 0;
       const bg = new THREE.Group();
       const seat = box(2.2, 0.14, 0.6, mat(0x9a6a3f));
       seat.position.y = 0.55;
@@ -548,6 +565,7 @@ export class Engine implements EngineApi {
       const legR = legL.clone();
       legR.position.x = 0.95;
       bg.add(seat, back, legL, legR);
+      bg.scale.setScalar(BENCH_SCALE);
       bg.position.set(bx, 0, -10);
       bg.rotation.y = faceYaw;
       shadow(bg);
@@ -555,9 +573,9 @@ export class Engine implements EngineApi {
       addObj(
         {
           kind: 'bench', group: bg, label: 'Sit', x: bx, z: -10, coolUntil: 0,
-          data: { seat: new THREE.Vector3(bx + (bx < 0 ? 0.3 : -0.3), 0, -10), faceYaw },
+          data: { seat: new THREE.Vector3(bx, 0, -10 + 0.04), faceYaw },
         },
-        { hw: 1.25, hd: 0.55 },
+        { hw: 1.4, hd: 0.45 },
       );
     }
 
@@ -1869,7 +1887,7 @@ export class Engine implements EngineApi {
               n.state = 'sit';
               n.sitBench = bench;
               n.dwellLeft = 4 + Math.random() * 2;
-              g.position.set(bench.data.seat.x, -0.14, bench.data.seat.z);
+              g.position.set(bench.data.seat.x, BENCH_SEAT_Y, bench.data.seat.z);
               g.rotation.y = bench.data.faceYaw ?? 0;
             } else {
               n.state = 'pause';
@@ -1916,7 +1934,7 @@ export class Engine implements EngineApi {
         n.dwellLeft -= dt;
         if (n.dwellLeft <= 0) {
           if (n.sitBench) {
-            g.position.set(n.sitBench.x + (n.sitBench.x < 0 ? 1.2 : -1.2), 0, n.sitBench.z);
+            g.position.set(n.sitBench.x, 0, n.sitBench.z + 1.0);
             n.sitBench = undefined;
           }
           n.state = n.prevState ?? 'walk_out';
@@ -1946,6 +1964,12 @@ export class Engine implements EngineApi {
 
       // bubble follows head
       if (n.bubble) {
+        // distance gate with hysteresis: show inside bubbleShowRange, hide beyond bubbleHideRange
+        const dist = this.player
+          ? Math.hypot(g.position.x - this.player.position.x, g.position.z - this.player.position.z)
+          : Infinity;
+        n.bubbleNear = nextBubbleNear(!!n.bubbleNear, dist);
+
         const head = new THREE.Vector3(g.position.x, g.position.y + CHARACTER_TAG_Y + 0.73, g.position.z);
         head.project(this.camera);
         const x = (head.x * 0.5 + 0.5) * this.container.clientWidth;
@@ -1954,6 +1978,8 @@ export class Engine implements EngineApi {
         // spots of the view, so hide the bubble unless the NPC is truly in frame.
         const inFrame = head.z < 1 && Math.abs(head.x) < 1.05 && Math.abs(head.y) < 1.05 && g.visible && !this.interiorMode;
         n.bubble.style.display = inFrame ? '' : 'none';
+        // fade in and out instead of popping when the player crosses the range
+        n.bubble.classList.toggle('faded', !n.bubbleNear);
         n.bubble.style.left = `${x}px`;
         n.bubble.style.top = `${y}px`;
       }
@@ -2032,7 +2058,13 @@ export class Engine implements EngineApi {
         this.vel.set(0, 0);
         // limbs ease back to rest, gentle idle breathing
         for (const l of [...legs, ...arms]) l.rotation.x *= Math.max(0, 1 - dt * 10);
-        p.position.y = Math.abs(Math.sin(this.clock.elapsedTime * 1.6)) * 0.06;
+        // idle breathing bobs ON TOP of the standing surface — in the wilderness
+        // the ground descends, so an absolute y here made the resident float
+        // above the dirt path and the lake shore the moment they stopped walking
+        const idleBase = this.interiorMode || p.position.x <= CONFIG.worldRect.maxX
+          ? 0
+          : groundY(p.position.x, p.position.z);
+        p.position.y = idleBase + Math.abs(Math.sin(this.clock.elapsedTime * 1.6)) * 0.06;
       }
 
       if (this.interiorMode) {
@@ -2057,10 +2089,14 @@ export class Engine implements EngineApi {
       // the store shell fades while the resident is inside so the interior reads
       const inStore =
         Math.abs(p.position.x - STORE_POS.x) < 4.4 && Math.abs(p.position.z - STORE_POS.z) < 3.4;
-      if (inStore !== this.insideStore) this.insideStore = inStore;
+      if (inStore !== this.insideStore) {
+        this.insideStore = inStore;
+        for (const l of this.storeLights) l.visible = inStore;
+      }
       const targetOp = this.insideStore ? 0.14 : 1;
       for (const m of this.storeFadeMats) m.opacity += (targetOp - m.opacity) * Math.min(1, dt * 8);
       this.insideFurnitureStore = Math.abs(p.position.x - (STORE_POS.x + 13)) < 4.4 && Math.abs(p.position.z - STORE_POS.z) < 3.4;
+      for (const l of this.furnitureLights) l.visible = this.insideFurnitureStore;
       const furnOp = this.insideFurnitureStore ? 0.14 : 1;
       for (const m of this.furnitureFadeMats) m.opacity += (furnOp - m.opacity) * Math.min(1, dt * 8);
 
@@ -2116,7 +2152,7 @@ export class Engine implements EngineApi {
         const seat = this.sitting.data.seat;
         // hips sit 0.74 above the group origin; drop the group so the torso
         // rests on the 0.62 seat top instead of hovering above it
-        p.position.set(seat.x, -0.14, seat.z);
+        p.position.set(seat.x, BENCH_SEAT_Y, seat.z);
         const want = this.sitting.data.faceYaw ?? p.rotation.y;
         let d3 = want - p.rotation.y;
         while (d3 > Math.PI) d3 -= Math.PI * 2;

@@ -796,3 +796,13 @@ body {
 }
 .bug-textarea:focus { border-color: rgba(242, 179, 78, 0.6); }
 .bug-actions { margin-top: 6px; }
+.settings-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.settings-actions .btn { flex: 1 1 140px; }
+
+/* NPC chat bubbles fade in and out at the proximity threshold */
+.npc-bubble {
+  transition: opacity 0.25s ease;
+}
+.npc-bubble.faded {
+  opacity: 0;
+}

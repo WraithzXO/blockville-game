@@ -49,7 +49,7 @@ export function buildFence(scene: THREE.Scene): void {
         beam.position.set(x, 4.3, 0);
         const welcome = new THREE.Mesh(
           new THREE.PlaneGeometry(6.4, 0.55),
-          new THREE.MeshBasicMaterial({ map: signTexture('WELCOME TO BLOCKVILLE', '#7a5230'), transparent: false }),
+          new THREE.MeshBasicMaterial({ map: signTexture('WELCOME TO BLOCKVILLE', '#7a5230', '#ffffff', 6.4 / 0.55), transparent: false }),
         );
         welcome.position.set(x > 0 ? x - 0.4 : x + 0.4, 4.3, 0);
         welcome.rotation.y = x > 0 ? -Math.PI / 2 : Math.PI / 2;

@@ -32,8 +32,9 @@ export default function CharacterPreview({ look }: { look: PlayerLook }) {
     scene.add(sun);
 
     const camera = new THREE.PerspectiveCamera(38, host.clientWidth / host.clientHeight, 0.1, 50);
-    camera.position.set(0, 2.6, 6.4);
-    camera.lookAt(0, 1.3, 0);
+    // framed so the tallest hats keep clear headroom in the preview
+    camera.position.set(0, 2.7, 7.0);
+    camera.lookAt(0, 1.45, 0);
 
     // little display platform
     const disc = new THREE.Mesh(

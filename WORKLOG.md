@@ -1118,3 +1118,44 @@ Structural cleanup only; no architecture, gameplay or visual changes.
 ## Phase 3 Final — wrap-up (verified)
 - Final sweep on the delivered state: npm test 99 PASS / 0 FAIL; tsc clean; vite build clean.
 - PHASE3-REPORT.md written; project packaged as blockville-phase3-complete.zip.
+
+## Phase 3 follow-up — idle float at the lake trail/shore (verified)
+- User asked whether standing still on the path/lake was confirmed. Probes proved
+  walking y tracks the rendered surface exactly (diff 0.000 over the full descent),
+  but IDLE floated: engine.ts idle "breathing" set position.y = |sin(t)|*0.06
+  absolute, so stopping on descending ground (trail x>~170, lake shore) snapped the
+  resident up to y~0 (up to 3.1 units above the beach). Phase 1 Chunk 4 fixed
+  walking only; stills missed this because the contact shadow floats with the body.
+- Fix: idle bob now adds to the standing surface (groundY beyond the town rect,
+  0 in town/interiors). engine.ts one site.
+- Verified: moving diff 0.000; idle y within 0.06 of ground at path-mid (-1.13),
+  path-bend (-2.50), shore (-3.07); before/after screenshots; new browser regression
+  test 'resident idles ON the ground on the lake trail'. npm test 99 PASS / 0 FAIL;
+  browser spec 6/6 ALL PASS; tsc clean; vite build clean.
+
+## Chunk 1 — Character model proportions (P1.1)
+- Adapted `src/players/CharacterBuilder.ts` to the Quaternius "Matt" reference proportions: legs about 30% of height (hip pivot 0.74 to 0.86), torso shortened to about 32%, head slightly taller, and arms lengthened so hands hang to mid-thigh.
+- Total height stays about 2.8 (was 2.83), so name tags, hats, the customise preview, and the limb pivots used by the walk cycle are unchanged.
+- Colours, clothing, shirt designs, faces, hats, glasses, and multiplayer sync code are untouched. All residents, NPCs, and player avatars use the same builder.
+- Verified: `npm test` passes, the production build passes, a static front/side render and a walk-pose render were checked against the reference, and the live game shows a grounded avatar at the new proportions.
+- Not done in this chunk: NPC bubble proximity (Chunk 2), sign and name tag text (Chunk 3).
+
+## Chunk 1b — Accessory fit and customiser framing
+- Hats scaled 1.12x across the X/Z axes and seated on the hair cap (y 2.80), so they match the hair width.
+- Glasses moved to the face texture's eye row (HEAD_Y + 0.03).
+- Customiser preview camera moved back and raised so the tallest hats have headroom.
+- Verified with a temporary harness rendering all 11 hats, 3 glasses, and 11 shirt designs (harness removed).
+- npm test passes; production build passes.
+
+## Chunk 2 — NPC chat bubble proximity (P1.2)
+- Bubbles show within bubbleShowRange (4.5 units, about 4.8 character widths) and hide beyond bubbleHideRange (5.2), so they don't flicker at the edge.
+- Range rule lives in src/game/bubbleRange.ts; spec tests/bubblerange.spec.mjs (added to npm test).
+- Bubbles fade with an opacity transition instead of popping.
+- npm test passes (all specs); production build passes.
+- Not yet observed live: a player walking up to a dwelling NPC. Bubbles spawn at random, so this needs an in-game walk test.
+
+## Chunk 3 — Sign text and name tags (P2.4, P2.5)
+- Sign textures now use the sign's own aspect ratio (signTexture takes aspect; sign() passes w/h). Previously a 512x128 canvas was stretched onto boards of other ratios, which distorted the lettering.
+- Sign canvas renders at 1024px on the long side, with mipmaps and anisotropy 8, so text stays sharp at distance.
+- Name tags render at 4x supersampling; sprite width is taken from the canvas aspect, so names are no longer squashed.
+- Verified: npm test passes, tsc passes, production build passes, harness render shows undistorted sign and tags.

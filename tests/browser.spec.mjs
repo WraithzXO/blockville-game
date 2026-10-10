@@ -180,6 +180,26 @@ const tests = [
     closePage();
   }],
 
+  ['resident idles ON the ground on the lake trail (no idle float)', async (ctx) => {
+    const { cdp, close: closePage } = await connectPage(ctx.cdpPort, '');
+    await boot(cdp, ctx.vitePort, '?autoname=Trail');
+    await cdp.waitFor(`window.__bv ? window.__bv.playerPos() : null`, 'debug hook', 8_000);
+    // teleport onto the descending part of the dirt trail and just stand there
+    await cdp.eval(`window.__bv.teleport(228, 12.4); true`);
+    await WAIT(800); // the idle breathing animation must not overwrite y
+    const r = await cdp.waitFor(`(async () => {
+      if (!window.__wt) { window.__wt = null; import('/src/world/WorldTerrain.ts').then(m => { window.__wt = m; }); }
+      if (!window.__wt) return null;
+      const p = window.__bv.eng.player;
+      const g = window.__wt.groundY(p.position.x, p.position.z);
+      return { y: +p.position.y.toFixed(3), g: +g.toFixed(3) };
+    })()`, 'idle ground check', 8_000);
+    if (!r) throw new Error('ground check never ran');
+    if (Math.abs(r.y - r.g) > 0.09) throw new Error(`idle float: y=${r.y} vs ground=${r.g}`);
+    if (r.y > -1.5) throw new Error(`idle y ignored the trail descent: y=${r.y}`);
+    closePage();
+  }],
+
   ['two browser sessions see each other join', async (ctx) => {
     // pages share one Chrome profile, so the persisted name gate would make
     // the second session restore the first session's name; ?autoname= (dev

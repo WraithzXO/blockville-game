@@ -12,34 +12,43 @@ export const box = (w: number, h: number, d: number, m: THREE.Material) => {
   return mesh;
 };
 
-export function signTexture(text: string, bg: string, fg = '#ffffff'): THREE.CanvasTexture {
+// Sign lettering is drawn at the sign's own aspect ratio (width / height), so
+// the text is never stretched, and at 1024px on the long side so it stays sharp.
+export function signTexture(text: string, bg: string, fg = '#ffffff', aspect = 4): THREE.CanvasTexture {
+  const a = Math.min(Math.max(aspect, 0.25), 8);
+  const W = a >= 1 ? 1024 : Math.round(1024 * a);
+  const H = a >= 1 ? Math.round(1024 / a) : 1024;
+  const k = H / 128; // padding and stroke scale with the sign height
   const c = document.createElement('canvas');
-  c.width = 512;
-  c.height = 128;
+  c.width = W;
+  c.height = H;
   const g = c.getContext('2d')!;
   g.fillStyle = bg;
-  g.fillRect(0, 0, 512, 128);
+  g.fillRect(0, 0, W, H);
   g.strokeStyle = 'rgba(0,0,0,0.35)';
-  g.lineWidth = 8;
-  g.strokeRect(4, 4, 504, 120);
+  g.lineWidth = 8 * k;
+  g.strokeRect(4 * k, 4 * k, W - 8 * k, H - 8 * k);
   g.fillStyle = fg;
   g.textAlign = 'center';
   g.textBaseline = 'middle';
-  let size = 64;
+  let size = Math.floor(H * 0.5);
   do {
     g.font = `bold ${size}px system-ui, sans-serif`;
-    size -= 4;
-  } while (g.measureText(text).width > 470 && size > 20);
-  g.fillText(text, 256, 68);
+    size -= 2;
+  } while (g.measureText(text).width > W * 0.9 && size > 8);
+  g.fillText(text, W / 2, H * 0.53);
   const t = new THREE.CanvasTexture(c);
   t.colorSpace = THREE.SRGBColorSpace;
+  t.anisotropy = 8;
+  t.minFilter = THREE.LinearMipmapLinearFilter;
+  t.magFilter = THREE.LinearFilter;
   return t;
 }
 
 export function sign(text: string, bg: string, w = 6, h = 1.5): THREE.Mesh {
   const m = new THREE.Mesh(
     new THREE.PlaneGeometry(w, h),
-    new THREE.MeshBasicMaterial({ map: signTexture(text, bg), side: THREE.DoubleSide, depthWrite: true }),
+    new THREE.MeshBasicMaterial({ map: signTexture(text, bg, '#ffffff', w / h), side: THREE.DoubleSide, depthWrite: true }),
   );
   return m;
 }

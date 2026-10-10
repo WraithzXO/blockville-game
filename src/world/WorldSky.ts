@@ -5,7 +5,7 @@ import * as THREE from 'three';
 export function buildSkyAndLights(scene: THREE.Scene): THREE.Group[] {
       // Lighting pass: a warm key sun with a cool sky fill and a warm grass
       // bounce keeps shadows readable (never black) while forms stay modelled.
-      const hemi = new THREE.HemisphereLight(0xa9c4f2, 0xa89a62, 0.82);
+      const hemi = new THREE.HemisphereLight(0xa9c4f2, 0xa89a62, 0.7);
       scene.add(hemi);
       const sun = new THREE.DirectionalLight(0xffd8a0, 2.75);
       // the shadow frustum is centred on the town (z -34..202), not the origin
@@ -21,7 +21,7 @@ export function buildSkyAndLights(scene: THREE.Scene): THREE.Group[] {
       sun.shadow.camera.bottom = -125;
       sun.shadow.bias = -0.0004;
       sun.shadow.normalBias = 0.06;
-      sun.shadow.radius = 3.2;
+      // shadow.radius removed: PCFSoftShadowMap uses a fixed 9-tap kernel in r170 and never reads it
       scene.add(sun, sun.target);
 
       // gradient sky dome with a soft sun glow — slight detail, still stylised
@@ -80,9 +80,9 @@ export function buildSkyAndLights(scene: THREE.Scene): THREE.Group[] {
         cl.scale.setScalar(1.3);
         if (i < 3) {
           // a few low, far clouds that peek into the default town view
-          cl.position.set(-180 + i * 90, 5 + (i % 2) * 3, -100 - i * 12);
+          cl.position.set(-180 + i * 90, (5 + (i % 2) * 3) * 1.12, -100 - i * 12);
         } else {
-          cl.position.set(-150 + i * 46, 24 + (i % 3) * 8, -55 - (i % 4) * 38);
+          cl.position.set(-150 + i * 46, (24 + (i % 3) * 8) * 1.12, -55 - (i % 4) * 38);
         }
         scene.add(cl);
         clouds.push(cl);

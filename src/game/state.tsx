@@ -2,6 +2,8 @@ import  React, { createContext, useContext, useEffect, useMemo, useReducer, useR
 import { setVolumes as setAudioVolumes, sfx, type AudioVolumes } from './audio';
 import { allocateSlot, type PlacedFeature, type PlotFeatureKind, DECOR_LABEL } from '../plots/PlotLayout';
 import  { BUILDING_DEFS, COMMUNITY_PLOTS, CONFIG, PLOT_POSITIONS, RESIDENT_BUILDERS, START_LISTINGS, TOTAL_PLOTS, DEFAULT_LOOK, STORE_ITEMS, plotAllowance, type BuildingType, type PlayerLook, FURNITURE_DEFS, stakingRewardFor }  from './config';
+import { RETIRED_PLOT_IDS } from './config';
+import { DEMO_FUNDING } from './demoFunding';
 
 const RESIDENTS = ['Nova', 'Rex', 'Momo', 'Vega', 'Juno', 'Pixel'];
 
@@ -232,10 +234,10 @@ const initialListings = (): Listing[] =>
 export const initial: State = {
   mode: null,
   onboarded: false,
-  balance: persistedStaking.balance, // persisted demo wallet balance
-  sol: CONFIG.demoSol,
+  balance: DEMO_FUNDING.enabled ? DEMO_FUNDING.balance : persistedStaking.balance, // demo wallet balance
+  sol: DEMO_FUNDING.enabled ? DEMO_FUNDING.sol : CONFIG.demoSol,
   staked: persistedStaking.staked,
-  blocks: persistedStaking.blocks,
+  blocks: DEMO_FUNDING.enabled ? DEMO_FUNDING.blocks : persistedStaking.blocks,
   builder: persistedStaking.builder,
   plots: emptyPlots(),
   listings: initialListings(),
@@ -340,6 +342,7 @@ function baseReducer(s: State, a: Action): State {
       const def = BUILDING_DEFS[a.type];
       if (s.blocks < def.cost) return s;
       const target = s.plots.find((p) => p.id === a.plot)!;
+      if (RETIRED_PLOT_IDS.includes(a.plot)) return s;     // removed front-row plot
       if (target.owner) return s;                          // plot already taken
       const claimed = s.plots.filter((p) => p.owner === 'you').length;
       if (claimed >= plotAllowance(s.staked, s.permit ? CONFIG.items.permitExtraPlots : 0)) return s;

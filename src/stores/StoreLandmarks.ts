@@ -17,6 +17,8 @@ export interface StoreInteriorCtx {
   makeNpcMesh: (look?: PlayerLook) => THREE.Group;
   onShopkeeper: (keeper: THREE.Group) => void;
   scene: THREE.Scene;
+  storeLights?: THREE.Light[];
+  furnitureLights?: THREE.Light[];
 }
 
 export function makeStore(ctx: StoreCtx): THREE.Group {
@@ -195,7 +197,7 @@ export function makeFurnitureStore(ctx: { fadeMats: THREE.MeshStandardMaterial[]
 }
 
 export function buildStoreInterior(ctx: StoreInteriorCtx): void {
-    buildFurnitureShowroom({ colliders: ctx.colliders, scene: ctx.scene });
+    buildFurnitureShowroom({ colliders: ctx.colliders, scene: ctx.scene, storeLights: ctx.furnitureLights });
     const g = new THREE.Group();
     // interior shell — only visible from inside (back faces)
     const inner = new THREE.Mesh(
@@ -277,6 +279,8 @@ export function buildStoreInterior(ctx: StoreInteriorCtx): void {
     }
     const warm = new THREE.PointLight(0xffdfae, 42, 18, 1.6);
     warm.position.set(0, 3.2, 0.5);
+    warm.visible = false; // switched on by the engine while the resident is inside
+    ctx.storeLights?.push(warm);
     g.add(warm);
     // the shopkeeper — greets you and opens the store
     const keeper = ctx.makeNpcMesh({

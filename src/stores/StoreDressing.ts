@@ -153,7 +153,7 @@ export function dressFurnitureStore(g: THREE.Group, colliders: { x: number; z: n
 }
 
 // ── Furniture Store walk-in showroom ───────────────────────────────────
-export function buildFurnitureShowroom(ctx: { colliders: { x: number; z: number; hw: number; hd: number }[]; scene: THREE.Scene }) {
+export function buildFurnitureShowroom(ctx: { colliders: { x: number; z: number; hw: number; hd: number }[]; scene: THREE.Scene; storeLights?: THREE.Light[] }) {
   const FX = STORE_POS.x + 13, FZ = STORE_POS.z;
   const g = new THREE.Group();
   const inner = new THREE.Mesh(
@@ -210,7 +210,10 @@ export function buildFurnitureShowroom(ctx: { colliders: { x: number; z: number;
     shade.position.set(lx, 3.2, lz);
     g.add(cord, shade);
   }
-  const warm = new THREE.PointLight(0xffe2b0, 48, 18, 1.6); warm.position.set(0, 3.4, 0); g.add(warm);
+  const warm = new THREE.PointLight(0xffe2b0, 48, 18, 1.6); warm.position.set(0, 3.4, 0);
+  warm.visible = false; // switched on by the engine while the resident is inside the showroom
+  ctx.storeLights?.push(warm);
+  g.add(warm);
   g.position.set(FX, 0, FZ);
   ctx.scene.add(g);
   ctx.colliders.push(

@@ -53,6 +53,10 @@ export const CONFIG = {
   maxNpcs: 12,               // hard cap — keep it light
   bubbleTimeMin: 1.5,        // seconds a chat bubble stays visible
   bubbleTimeMax: 3.0,
+  // NPC chat bubbles only show when the resident is close: ~4.5 character widths
+  // (one width ≈ 0.94 units) to show, and a wider hide distance so they don't flicker
+  bubbleShowRange: 4.5,
+  bubbleHideRange: 5.2,
 
   // ── walking & interaction (third-person resident) ──
   walkSpeed: 7.5,            // units per second with WASD held
@@ -527,6 +531,11 @@ export const START_LISTINGS: { plot: number; price: number }[] = [
 ];
 
 export const STORE_POS = { x: 0, z: -22 };
+
+// Front-row plots removed so the Blockville Store and Furniture Store entrances
+// stay open. IDs are NOT renumbered: every other plot keeps its id and owner.
+// A retired plot gets no marker, click target, proximity prompt, or claim.
+export const RETIRED_PLOT_IDS: number[] = [1, 2];
 
 // Resident Builders used for proportional fee distribution in the demo —
 // the player's share of a distribution is their stake / total stake.

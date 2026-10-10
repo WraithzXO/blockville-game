@@ -4,6 +4,28 @@ import * as THREE from 'three';
 import { mat, box } from '../buildings/BuildingMaterials';
 import { benchSeat, civicLamp } from '../buildings/BuildingParts';
 import { SOUTH_ROADS } from '../game/config';
+import { PLOT_POSITIONS, RETIRED_PLOT_IDS } from '../game/config';
+
+// Paved forecourt on each plot retired in front of a store. It matches the
+// sidewalk tone and joins the existing sidewalk at the main road edge, so the
+// ground reads as town rather than an empty grass gap.
+export function buildStoreForecourts(scene: THREE.Scene): void {
+  const walkMat = mat(0xcfc8b8, { roughness: 1 });
+  walkMat.polygonOffset = true;
+  walkMat.polygonOffsetFactor = -2;
+  walkMat.polygonOffsetUnits = -4;
+  const roadEdgeZ = -5.2;
+  for (const id of RETIRED_PLOT_IDS) {
+    const def = PLOT_POSITIONS.find((p) => p.id === id);
+    if (!def) continue;
+    const zLo = def.z - 4.5;
+    const slab = new THREE.Mesh(new THREE.PlaneGeometry(9, roadEdgeZ - zLo), walkMat);
+    slab.rotation.x = -Math.PI / 2;
+    slab.position.set(def.x, 0.05, (roadEdgeZ + zLo) / 2);
+    slab.receiveShadow = true;
+    scene.add(slab);
+  }
+}
 
 export function buildRoads(scene: THREE.Scene): void {
       // roads: main E-W + spur to the store + Wave-1 cross streets running south

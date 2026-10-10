@@ -9,7 +9,7 @@
     "preview": "vite preview",
     "server": "node server/index.mjs"
     ,
-    "test": "node tests/protocol.spec.mjs && node tests/market.spec.mjs && node tests/blocks.spec.mjs && node tests/placement.spec.mjs && node tests/terrain.spec.mjs && node tests/props.spec.mjs && node tests/upgrade.spec.mjs && node tests/furniture.spec.mjs && node tests/settings.spec.mjs && node tests/bugreport.spec.mjs && node tests/activitylog.spec.mjs"
+    "test": "node tests/protocol.spec.mjs && node tests/market.spec.mjs && node tests/blocks.spec.mjs && node tests/placement.spec.mjs && node tests/terrain.spec.mjs && node tests/props.spec.mjs && node tests/upgrade.spec.mjs && node tests/furniture.spec.mjs && node tests/settings.spec.mjs && node tests/bugreport.spec.mjs && node tests/activitylog.spec.mjs && node tests/bubblerange.spec.mjs && node tests/plots.spec.mjs"
   },
   "dependencies": {
     "react": "^18.3.1",

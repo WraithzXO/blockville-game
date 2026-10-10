@@ -909,22 +909,8 @@ function TopBar() {
             <button className="mbtn" onClick={() => dispatch({ t: 'setMarketOpen', open: true })} title="Buy and sell plots on the market">
               🏷️ <span>Market</span>
             </button>
-            <button className="mbtn" onClick={() => dispatch({ t: 'setTreasuryOpen', open: true })} title="Treasury & fee distribution">
-              🏦 <span>Treasury</span>
-            </button>
             <button className="mbtn" onClick={() => dispatch({ t: 'setCustomiseOpen', open: true })} title="Customise your resident">
               🧍 <span>Character</span>
-            </button>
-            <button
-              className="mbtn"
-              onClick={() =>
-                state.builder
-                  ? dispatch({ t: 'setStakeMoreOpen', open: true })
-                  : dispatch({ t: 'setStakeDockClosed', closed: false })
-              }
-              title={state.builder ? 'Stake more to unlock another block of land' : 'Open the Blockville Store to stake'}
-            >
-              🔒 <span>{state.builder ? 'Stake more' : 'Stake'}</span>
             </button>
             <button
               className="mbtn"
@@ -1258,6 +1244,33 @@ function SettingsModal() {
         <span className="settings-val">{Math.round(state.volumes.sfx * 100)}%</span>
       </div>
       <p className="dock-note subtle">Sliders preview a blip on release so you can hear the level. Volumes are saved with your other progress.</p>
+      <hr className="settings-divider" />
+      <h4 className="settings-subhead">💰 Economy</h4>
+      <div className="settings-actions">
+        <button
+          className="btn sm"
+          type="button"
+          title="Treasury & fee distribution"
+          onClick={() => {
+            dispatch({ t: 'setSettingsOpen', open: false });
+            dispatch({ t: 'setTreasuryOpen', open: true });
+          }}
+        >
+          🏦 Treasury
+        </button>
+        <button
+          className="btn sm"
+          type="button"
+          title={state.builder ? 'Stake more to unlock another block of land' : 'Open the Blockville Store to stake'}
+          onClick={() => {
+            dispatch({ t: 'setSettingsOpen', open: false });
+            if (state.builder) dispatch({ t: 'setStakeMoreOpen', open: true });
+            else dispatch({ t: 'setStakeDockClosed', closed: false });
+          }}
+        >
+          🔒 {state.builder ? 'Stake more' : 'Stake'}
+        </button>
+      </div>
       <hr className="settings-divider" />
       <form onSubmit={sendBug}>
         <h4 className="settings-subhead">🐞 Report a bug</h4>
