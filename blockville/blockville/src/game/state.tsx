@@ -1,26 +1,8 @@
-import React, {
-  createContext,
-  useContext,
-  useEffect,
-  useMemo,
-  useReducer,
-  useRef,
-} from 'react';
-import {
-  BUILDING_DEFS,
-  COMMUNITY_PLOTS,
-  CONFIG,
-  PLOT_POSITIONS,
-  RESIDENT_BUILDERS,
-  START_LISTINGS,
-  TOTAL_PLOTS,
-  DEFAULT_LOOK,
-  HATS,
-  STORE_ITEMS,
-  plotAllowance,
-  type BuildingType,
-  type PlayerLook,
-} from './config';
+import  React, { createContext, useContext, useEffect, useMemo, useReducer, useRef }  from 'react';
+import { allocateSlot, type PlacedFeature, type PlotFeatureKind, DECOR_LABEL } from '../plots/PlotLayout';
+import  { BUILDING_DEFS, COMMUNITY_PLOTS, CONFIG, PLOT_POSITIONS, RESIDENT_BUILDERS, START_LISTINGS, TOTAL_PLOTS, DEFAULT_LOOK, STORE_ITEMS, plotAllowance, type BuildingType, type PlayerLook, FURNITURE_DEFS, stakingRewardFor }  from './config';
+
+const RESIDENTS = ['Nova', 'Rex', 'Momo', 'Vega', 'Juno', 'Pixel'];
 
 export interface Plot {
   id: number;
@@ -29,6 +11,8 @@ export interface Plot {
   done: boolean;
   level: number;      // foundation for future upgrades
   owner: 'you' | 'other' | null;   // who holds the plot (null = free land)
+  ownerName: string | null;        // display name for the "Plot owned by" label
+  housePaint?: string;              // owner-selected interior wall colour
 }
 
 export interface Listing {
@@ -46,10 +30,10 @@ export interface FeedItem {
   detail: string;
 }
 
-export interface Toast {
-  id: number;
-  text: string;
-}
+export interface ArcadeScore { gameId: string; name: string; score: number; }
+
+export interface Toast { id: number; text: string; }
+export interface FurniturePlacement { id: string; itemId: string; x: number; z: number; rotation: number; locked?: boolean; }
 
 interface State {
   mode: 'demo' | 'wallet' | null;
@@ -66,10 +50,17 @@ interface State {
   toasts: Toast[];
   selectedPlot: number | null;
   look: PlayerLook;
+  name: string;                // the resident's display name (multiplayer identity)
   unlockedHats: string[];      // hat ids purchased from the Store
   unlockedGlasses: string[];   // glasses ids purchased from the Store
+  unlockedDesigns: string[];   // shirt-design ids purchased from the Store
+  townDecorInventory: Record<string, number>;
+  boots: boolean;              // Speed Boots — walk faster
+  toolkit: boolean;            // Builder's Toolkit — 2 blocks per build click
+  permit: boolean;             // Claim Permit — one extra plot claim
   gardenKits: number;          // Garden Kits bought, waiting to be placed
   gardens: number[];           // plot ids with a garden placed
+  plotDecor: Record<number, PlacedFeature[]>;   // everything placed in a plot's yard (garden, statue, fence…) with its reserved slot
   storeOpen: boolean;
   customiseOpen: boolean;
   treasury: { balance: number; ledger: FeedItem[] };
@@ -78,6 +69,17 @@ interface State {
   stakeDockClosed: boolean;    // pre-stake store dock hidden by the player
   lastDistribution: { total: number; yourShare: number } | null;
   nearPlot: number | null;     // plot the resident is standing next to
+  promptText: string | null;   // world-object interact prompt (E — …)
+  noticeOpen: boolean;         // town noticeboard panel
+  logOpen: boolean;            // bottom-left activity log expanded
+  logTab: 'town' | 'personal'; // which activity log section is selected
+  logUnread: boolean;          // something new in PERSONAL while viewing TOWN
+  furnitureInventory: Record<string, number>;
+  houseFurniture: Record<number, FurniturePlacement[]>;
+  interiorPlot: number | null;
+  furnitureStoreOpen: boolean;
+  arcadeOpen: boolean;
+  arcadeScores: ArcadeScore[];
 }
 
 type Action =
@@ -91,11 +93,14 @@ type Action =
   | { t: 'listPlot'; plot: number; price: number }
   | { t: 'cancelListing'; id: number }
   | { t: 'buyListing'; id: number }
-  | { t: 'simClaim'; plot: number; type: BuildingType }
+  | { t: 'remoteClaim'; plot: number; ownerName: string }
+  | { t: 'simClaim'; plot: number; type: BuildingType; name: string }
   | { t: 'simList'; plot: number; price: number; seller: string }
   | { t: 'simBuy'; id: number }
   | { t: 'buyItem'; item: string }
   | { t: 'placeGarden'; plot: number }
+  | { t: 'placeDecor'; plot: number; kind: Exclude<PlotFeatureKind, 'garden'> }
+  | { t: 'removeDecor'; plot: number; id: string }
   | { t: 'upgrade'; plot: number }
   | { t: 'setTreasuryOpen'; open: boolean }
   | { t: 'setStakeMoreOpen'; open: boolean }
@@ -103,14 +108,33 @@ type Action =
   | { t: 'treasuryIn'; amount: number; label: string; detail: string }
   | { t: 'treasuryDistribute'; total: number; yourShare: number }
   | { t: 'setLook'; look: PlayerLook }
+  | { t: 'setName'; name: string }
   | { t: 'setStoreOpen'; open: boolean }
   | { t: 'setCustomiseOpen'; open: boolean }
+  | { t: 'enterHouse'; plot: number }
+  | { t: 'exitHouse' }
+  | { t: 'paintHouse'; plot: number; color: string }
+  | { t: 'setFurnitureStoreOpen'; open: boolean }
+  | { t: 'setArcadeOpen'; open: boolean }
+  | { t: 'setArcadeScores'; scores: ArcadeScore[] }
+  | { t: 'buyFurniture'; itemId: string }
+  | { t: 'placeFurniture'; plot: number; itemId: string }
+  | { t: 'removeFurniture'; plot: number; placementId: string }
+  | { t: 'rotateFurniture'; plot: number; placementId: string }
+  | { t: 'moveFurniture'; plot: number; placementId: string; dx: number; dz: number }
+  | { t: 'toggleFurnitureLock'; plot: number; placementId: string }
+  | { t: 'remoteHouseState'; plot: number; placements: FurniturePlacement[] }
   | { t: 'setNearPlot'; plot: number | null }
+  | { t: 'setPrompt'; text: string | null }
+  | { t: 'setNoticeOpen'; open: boolean }
+  | { t: 'setLogOpen'; open: boolean }
+  | { t: 'setLogTab'; tab: 'town' | 'personal' }
+  | { t: 'logUnread' }
+  | { t: 'foundCoins'; amount: number; source: string }
   | { t: 'npcReward'; building: BuildingType; amount: number }
   | { t: 'npcRewardDirect'; amount: number }
   | { t: 'feed'; icon: string; text: string; detail: string }
-  | { t: 'toast'; text: string }
-  | { t: 'toastGone'; id: number };
+  | { t: 'toast'; text: string };
 
 let uid = 1;
 const nextId = () => uid++;
@@ -123,10 +147,62 @@ const emptyPlots = (): Plot[] =>
       return {
         id: p.id, type: community.type, progress: def.cost, done: true, level: 1,
         owner: 'other' as const,
+        ownerName: 'Town Council', housePaint: '#ead8b8',
       };
     }
-    return { id: p.id, type: null, progress: 0, done: false, level: 1, owner: null };
+    return { id: p.id, type: null, progress: 0, done: false, level: 1, owner: null, ownerName: null, housePaint: '#ead8b8' };
   });
+
+// persistent multiplayer identity — survives reloads, unique-ish by default
+const loadArcadeScores = (): ArcadeScore[] => {
+  try {
+    const parsed = JSON.parse(localStorage.getItem('blockville.arcadeScores') || '[]');
+    return Array.isArray(parsed) ? parsed.filter((x) => x && typeof x.name === 'string' && Number.isFinite(x.score)).slice(0, 10) : [];
+  } catch { return []; }
+};
+
+const loadName = (): string => {
+  try {
+    // DEV-ONLY (stripped from production builds): ?autoname=... skips the name gate for visual checks.
+    if (import.meta.env.DEV && typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('autoname')) {
+      return (new URLSearchParams(window.location.search).get('autoname') || '').slice(0, 12);
+    }
+    const saved = localStorage.getItem('blockville_name');
+    if (saved && saved.trim()) return saved.trim().slice(0, 12);
+  } catch { /* private mode */ }
+  return '';
+};
+
+const loadStaking = () => {
+  const fallback = { builder: false, balance: 60000, staked: 0, blocks: 0 };
+  try {
+    const raw = localStorage.getItem('blockville_staking');
+    if (!raw) return fallback;
+    const parsed = JSON.parse(raw) as Record<string, unknown>;
+    const finite = (value: unknown, fallbackValue: number) => Number.isFinite(Number(value)) ? Number(value) : fallbackValue;
+    return {
+      builder: parsed.builder === true,
+      balance: Math.max(0, finite(parsed.balance, fallback.balance)),
+      staked: Math.max(0, finite(parsed.staked, 0)),
+      blocks: Math.max(0, finite(parsed.blocks, 0)),
+    };
+  } catch { return fallback; }
+};
+
+const loadStoreProgress = () => {
+  try {
+    const raw = JSON.parse(localStorage.getItem('blockville_store_progress') || '{}') as Record<string, unknown>;
+    return {
+      unlockedHats: Array.isArray(raw.unlockedHats) ? raw.unlockedHats.filter((x): x is string => typeof x === 'string') : [],
+      unlockedGlasses: Array.isArray(raw.unlockedGlasses) ? raw.unlockedGlasses.filter((x): x is string => typeof x === 'string') : [],
+      unlockedDesigns: Array.isArray(raw.unlockedDesigns) ? raw.unlockedDesigns.filter((x): x is string => typeof x === 'string') : [],
+      townDecorInventory: raw.townDecorInventory && typeof raw.townDecorInventory === 'object' ? raw.townDecorInventory as Record<string, number> : {},
+      permit: raw.permit === true,
+    };
+  } catch { return { unlockedHats: [], unlockedGlasses: [], unlockedDesigns: [], townDecorInventory: {}, permit: false }; }
+};
+const persistedStaking = loadStaking();
+const persistedStore = loadStoreProgress();
 
 const initialListings = (): Listing[] =>
   START_LISTINGS.map((l, i) => ({
@@ -140,11 +216,11 @@ const initialListings = (): Listing[] =>
 const initial: State = {
   mode: null,
   onboarded: false,
-  balance: 60000, // demo wallet balance so the 20K stake is testable
+  balance: persistedStaking.balance, // persisted demo wallet balance
   sol: CONFIG.demoSol,
-  staked: 0,
-  blocks: 0,
-  builder: false,
+  staked: persistedStaking.staked,
+  blocks: persistedStaking.blocks,
+  builder: persistedStaking.builder,
   plots: emptyPlots(),
   listings: initialListings(),
   marketOpen: false,
@@ -152,10 +228,17 @@ const initial: State = {
   toasts: [],
   selectedPlot: null,
   look: { ...DEFAULT_LOOK },
-  unlockedHats: [],
-  unlockedGlasses: [],
+  name: loadName(),
+  unlockedHats: persistedStore.unlockedHats,
+  unlockedGlasses: persistedStore.unlockedGlasses,
+  unlockedDesigns: persistedStore.unlockedDesigns,
+  townDecorInventory: persistedStore.townDecorInventory,
+  boots: false,
+  toolkit: false,
+  permit: persistedStore.permit,
   gardenKits: 0,
   gardens: [],
+  plotDecor: {},
   storeOpen: false,
   customiseOpen: false,
   treasury: { balance: 0, ledger: [] },
@@ -164,6 +247,17 @@ const initial: State = {
   stakeDockClosed: false,
   lastDistribution: null,
   nearPlot: null,
+  promptText: null,
+  noticeOpen: false,
+  logOpen: false,
+  logTab: 'town',
+  logUnread: false,
+  furnitureInventory: {},
+  houseFurniture: {},
+  interiorPlot: null,
+  furnitureStoreOpen: false,
+  arcadeOpen: false,
+  arcadeScores: loadArcadeScores(),
 };
 
 function reducer(s: State, a: Action): State {
@@ -171,53 +265,57 @@ function reducer(s: State, a: Action): State {
     case 'setMode':
       return { ...s, mode: a.mode };
     case 'stake': {
-      if (s.builder || a.amount < CONFIG.stakeMin || a.amount > s.balance) return s;
+      const amount = Number.isFinite(a.amount) ? a.amount : 0;
+      if (s.builder || amount < CONFIG.stakeMin || amount > s.balance) return s;
+      const blocksAwarded = stakingRewardFor(amount);
       const feed: FeedItem[] = [
         {
           id: nextId(),
           icon: '🏗️',
           text: 'You are now a Blockville Builder',
-          detail: `Staked ${a.amount.toLocaleString()} $BLOCKVILLE`,
+          detail: `Staked ${amount.toLocaleString()} $BLOCKVILLE · +${blocksAwarded.toFixed(4)} instant Blocks`,
         },
         ...s.feed,
       ].slice(0, 8);
       return {
         ...s,
         builder: true,
-        staked: a.amount,
-        balance: s.balance - a.amount,
-        blocks: s.blocks + CONFIG.starterBlocks,
+        staked: amount,
+        balance: s.balance - amount,
+        blocks: s.blocks + blocksAwarded,
         feed,
         toasts: [
           ...s.toasts,
-          { id: nextId(), text: `🏗️ Builder unlocked — +${CONFIG.starterBlocks} starter blocks` },
+          { id: nextId(), text: `🏗️ Builder unlocked — +${blocksAwarded.toFixed(4)} instant Blocks` },
         ],
         customiseOpen: true,   // first visit: pick your resident's look
       };
     }
     case 'stakeMore': {
-      if (!s.builder || a.amount <= 0 || a.amount > s.balance) return s;
-      const before = plotAllowance(s.staked);
-      const staked = s.staked + a.amount;
-      const after = plotAllowance(staked);
+      const amount = Number.isFinite(a.amount) ? a.amount : 0;
+      if (!s.builder || amount <= 0 || amount > s.balance) return s;
+      const blocksAwarded = stakingRewardFor(amount);
+      const before = plotAllowance(s.staked, s.permit ? CONFIG.items.permitExtraPlots : 0);
+      const staked = s.staked + amount;
+      const after = plotAllowance(staked, s.permit ? CONFIG.items.permitExtraPlots : 0);
       return {
         ...s,
-        balance: s.balance - a.amount,
+        balance: s.balance - amount,
         staked,
+        blocks: s.blocks + blocksAwarded,
         feed: [
           {
             id: nextId(),
             icon: '🔒',
-            text: `Staked ${a.amount.toLocaleString()} $BLOCKVILLE`,
-            detail: after > before
-              ? `You can now claim ${after} block${after === 1 ? '' : 's'} of land`
-              : `Total staked: ${staked.toLocaleString()}`,
+            text: `Staked ${amount.toLocaleString()} $BLOCKVILLE`,
+            detail: `${after > before ? `You can now claim ${after} block${after === 1 ? '' : 's'} of land · ` : ''}+${blocksAwarded.toFixed(4)} instant Blocks · total staked: ${staked.toLocaleString()}`,
           },
           ...s.feed,
         ].slice(0, 8),
-        toasts: after > before
-          ? [...s.toasts, { id: nextId(), text: `🗺️ Block of land unlocked — ${after}/${CONFIG.maxPlots}` }]
-          : s.toasts,
+        toasts: [
+          ...s.toasts,
+          { id: nextId(), text: `🧱 +${blocksAwarded.toFixed(4)} instant Blocks · ${after}/${CONFIG.maxPlots} land blocks unlocked` },
+        ],
       };
     }
     case 'claim': {
@@ -226,13 +324,13 @@ function reducer(s: State, a: Action): State {
       const target = s.plots.find((p) => p.id === a.plot)!;
       if (target.owner) return s;                          // plot already taken
       const claimed = s.plots.filter((p) => p.owner === 'you').length;
-      if (claimed >= plotAllowance(s.staked)) return s;   // need more stake to claim
+      if (claimed >= plotAllowance(s.staked, s.permit ? CONFIG.items.permitExtraPlots : 0)) return s;
       return {
         ...s,
         blocks: s.blocks - def.cost,
         selectedPlot: null,
         plots: s.plots.map((p) =>
-          p.id === a.plot ? { ...p, type: a.type, progress: 0, done: false, owner: 'you' as const } : p,
+          p.id === a.plot ? { ...p, type: a.type, progress: 0, done: false, owner: 'you' as const, ownerName: s.name } : p,
         ),
         feed: [
           {
@@ -246,17 +344,18 @@ function reducer(s: State, a: Action): State {
       };
     }
     case 'buildClick': {
+      const step = s.toolkit ? Math.min(CONFIG.items.toolkitPerClick, s.blocks) : 1;
       const plots = s.plots.map((p) => {
-        if (p.id !== a.plot || !p.type || p.done || s.blocks <= 0) return p;
+        if (p.id !== a.plot || !p.type || p.done || step <= 0) return p;
         const def = BUILDING_DEFS[p.type];
-        const progress = p.progress + 1;
+        const progress = p.progress + step;
         const done = progress >= def.cost;
         return { ...p, progress, done };
       });
       if (plots.every((p, i) => p === s.plots[i])) return s; // nothing consumed
       const finished = plots.find((p, i) => p.done && !s.plots[i].done);
       const completed = finished?.type ?? null;
-      const base: State = { ...s, blocks: s.blocks - 1, plots };
+      const base: State = { ...s, blocks: s.blocks - step, plots };
       if (completed) {
         const def = BUILDING_DEFS[completed];
         return {
@@ -277,9 +376,81 @@ function reducer(s: State, a: Action): State {
     }
     case 'selectPlot':
       return { ...s, selectedPlot: a.plot, storeOpen: a.plot === null ? s.storeOpen : false };
+    case 'enterHouse': {
+      const plot = s.plots.find((p) => p.id === a.plot);
+      if (!plot || plot.type !== 'house' || !plot.done || !plot.ownerName) return s;
+      return { ...s, interiorPlot: a.plot, selectedPlot: null, storeOpen: false, furnitureStoreOpen: false,
+        feed: [{ id: nextId(), icon: '🏠', text: `Entered ${plot.ownerName}'s House`, detail: plot.owner === 'you' ? 'Owner editing enabled' : 'Visitor mode — read only' }, ...s.feed].slice(0, 8) };
+    }
+    case 'exitHouse': return { ...s, interiorPlot: null };
+    case 'paintHouse': {
+      const plot = s.plots.find((p) => p.id === a.plot);
+      if (!plot || plot.type !== 'house' || plot.owner !== 'you') return s;
+      const color = /^#[0-9a-f]{6}$/i.test(a.color) ? a.color : '#ead8b8';
+      return { ...s, plots: s.plots.map((p) => p.id === a.plot ? { ...p, housePaint: color } : p) };
+    }
+    case 'setFurnitureStoreOpen': return { ...s, furnitureStoreOpen: a.open };
+    case 'setArcadeOpen': return { ...s, arcadeOpen: a.open, furnitureStoreOpen: a.open ? false : s.furnitureStoreOpen };
+    case 'setArcadeScores': {
+      const scores = a.scores.filter((x) => x && Number.isFinite(x.score)).slice(0, 10);
+      try { localStorage.setItem('blockville.arcadeScores', JSON.stringify(scores)); } catch {}
+      return { ...s, arcadeScores: scores };
+    }
+    case 'buyFurniture': {
+      const item = FURNITURE_DEFS.find((x) => x.id === a.itemId);
+      if (!item) return s;
+      if (s.balance < item.price) return { ...s, toasts: [...s.toasts, { id: nextId(), text: `Not enough $BLOCKVILLE for ${item.name}` }] };
+      return { ...s, balance: s.balance - item.price, furnitureInventory: { ...s.furnitureInventory, [item.id]: (s.furnitureInventory[item.id] || 0) + 1 }, furnitureStoreOpen: false,
+        feed: [{ id: nextId(), icon: item.icon, text: `${item.name} added to your furniture inventory`, detail: `${item.price.toLocaleString()} $BLOCKVILLE` }, ...s.feed].slice(0, 8) };
+    }
+    case 'placeFurniture': {
+      const plot = s.plots.find((p) => p.id === a.plot);
+      if (!plot || plot.type !== 'house' || plot.owner !== 'you' || (s.furnitureInventory[a.itemId] || 0) < 1) return s;
+      const id = `${a.plot}-${a.itemId}-${nextId()}`;
+      const current = s.houseFurniture[a.plot] || [];
+      return { ...s, furnitureInventory: { ...s.furnitureInventory, [a.itemId]: (s.furnitureInventory[a.itemId] || 0) - 1 }, houseFurniture: { ...s.houseFurniture, [a.plot]: [...current, { id, itemId: a.itemId, x: (current.length % 4) * 1.7 - 2.55, z: (Math.floor(current.length / 4) % 5) * 1.6 - 3.2, rotation: 0, locked: false }] } };
+    }
+    case 'removeFurniture': {
+      const plot = s.plots.find((p) => p.id === a.plot); if (!plot || plot.owner !== 'you') return s;
+      const current = s.houseFurniture[a.plot] || []; const found = current.find((x) => x.id === a.placementId); if (!found) return s;
+      return { ...s, houseFurniture: { ...s.houseFurniture, [a.plot]: current.filter((x) => x.id !== a.placementId) }, furnitureInventory: { ...s.furnitureInventory, [found.itemId]: (s.furnitureInventory[found.itemId] || 0) + 1 } };
+    }
+    case 'rotateFurniture': {
+      const plot = s.plots.find((p) => p.id === a.plot); if (!plot || plot.owner !== 'you') return s;
+      return { ...s, houseFurniture: { ...s.houseFurniture, [a.plot]: (s.houseFurniture[a.plot] || []).map((x) => x.id === a.placementId ? { ...x, rotation: x.rotation + Math.PI / 2 } : x) } };
+    }
+    case 'moveFurniture': {
+      const plot = s.plots.find((p) => p.id === a.plot); if (!plot || plot.owner !== 'you') return s;
+      return { ...s, houseFurniture: { ...s.houseFurniture, [a.plot]: (s.houseFurniture[a.plot] || []).map((x) => x.id === a.placementId && !x.locked ? { ...x, x: Math.max(-5.8, Math.min(5.8, x.x + a.dx)), z: Math.max(-4.4, Math.min(4.4, x.z + a.dz)) } : x) } };
+    }
+    case 'toggleFurnitureLock': {
+      const plot = s.plots.find((p) => p.id === a.plot); if (!plot || plot.owner !== 'you') return s;
+      return { ...s, houseFurniture: { ...s.houseFurniture, [a.plot]: (s.houseFurniture[a.plot] || []).map((x) => x.id === a.placementId ? { ...x, locked: !x.locked } : x) } };
+    }
+    case 'remoteHouseState':
+      return { ...s, houseFurniture: { ...s.houseFurniture, [a.plot]: a.placements } };
     case 'setNearPlot':
       if (s.nearPlot === a.plot) return s;
       return { ...s, nearPlot: a.plot };
+    case 'setPrompt':
+      if (s.promptText === a.text) return s;
+      return { ...s, promptText: a.text };
+    case 'setNoticeOpen':
+      return { ...s, noticeOpen: a.open };
+    case 'setLogOpen':
+      return { ...s, logOpen: a.open, logUnread: a.open && s.logTab === 'personal' ? false : s.logUnread };
+    case 'setLogTab':
+      return { ...s, logTab: a.tab, logUnread: a.tab === 'personal' ? false : s.logUnread };
+    case 'logUnread':
+      return { ...s, logUnread: true };
+    case 'foundCoins': {
+      // tiny, rare pocket-change finds — deliberately NOT an income stream
+      return {
+        ...s,
+        balance: s.balance + a.amount,
+        toasts: [...s.toasts, { id: nextId(), text: `💡 You found ${a.amount} $BLOCKVILLE (${a.source})` }],
+      };
+    }
     case 'setStakeMoreOpen':
       return { ...s, stakeMoreOpen: a.open };
     case 'setStakeDockClosed':
@@ -351,12 +522,26 @@ function reducer(s: State, a: Action): State {
         ...s,
         balance: s.balance - l.price,
         listings: s.listings.filter((x) => x.id !== a.id),
-        plots: s.plots.map((p) => (p.id === l.plot ? { ...p, owner: 'you' as const } : p)),
+        plots: s.plots.map((p) => (p.id === l.plot ? { ...p, owner: 'you' as const, ownerName: s.name } : p)),
         feed: [
           { id: nextId(), icon: '🗺️', text: `You bought plot ${l.plot + 1}`, detail: `For ${l.price.toLocaleString()} $BLOCKVILLE${what}` },
           ...s.feed,
         ].slice(0, 8),
         toasts: [...s.toasts, { id: nextId(), text: `🗺️ Plot ${l.plot + 1} is yours!` }],
+      };
+    }
+    case 'remoteClaim': {
+      // ownership change relayed by the server (another connected player, or the
+      // welcome snapshot). Keeps the "Plot owned by" label identical for everyone.
+      if (s.plots.some((p) => p.id === a.plot && p.ownerName === a.ownerName)) return s;
+      const mine = a.ownerName === s.name;
+      return {
+        ...s,
+        plots: s.plots.map((p) =>
+          p.id === a.plot
+            ? { ...p, owner: mine ? ('you' as const) : ('other' as const), ownerName: a.ownerName }
+            : p,
+        ),
       };
     }
     case 'simClaim': {
@@ -367,7 +552,7 @@ function reducer(s: State, a: Action): State {
         ...s,
         plots: s.plots.map((p) =>
           p.id === a.plot
-            ? { ...p, type: a.type, progress: def.cost, done: true, owner: 'other' as const }
+            ? { ...p, type: a.type, progress: def.cost, done: true, owner: 'other' as const, ownerName: a.name }
             : p,
         ),
         feed: [
@@ -407,7 +592,7 @@ function reducer(s: State, a: Action): State {
         balance: l.mine ? s.balance + l.price : s.balance,
         listings: s.listings.filter((x) => x.id !== a.id),
         plots: l.mine
-          ? s.plots.map((p) => (p.id === l.plot ? { ...p, owner: 'other' as const } : p))
+          ? s.plots.map((p) => (p.id === l.plot ? { ...p, owner: 'other' as const, ownerName: RESIDENTS.filter((r) => r !== s.name)[l.id % Math.max(1, RESIDENTS.filter((r) => r !== s.name).length)] } : p))
           : s.plots,
         feed: [soldFeed[0], ...s.feed].slice(0, 8),
         toasts: l.mine ? [...s.toasts, { id: nextId(), text: `💰 Plot sold — +${l.price.toLocaleString()} $BLOCKVILLE` }] : s.toasts,
@@ -430,15 +615,26 @@ function reducer(s: State, a: Action): State {
           ].slice(0, 8),
         },
       };
-      if (item.kind === 'blocks') {
+      if (item.kind === 'useful') {
+        const flag = item.useful!;
+        if ((flag === 'boots' && s.boots) || (flag === 'toolkit' && s.toolkit) || (flag === 'permit' && s.permit)) return s;
+        const patch = flag === 'boots' ? { boots: true } : flag === 'toolkit' ? { toolkit: true } : { permit: true };
         return {
           ...base,
-          blocks: s.blocks + (item.blocks ?? 0),
-          toasts: [...s.toasts, { id: nextId(), text: `🛒 ${item.name} — +${item.blocks} blocks` }],
+          ...patch,
+          toasts: [...s.toasts, { id: nextId(), text: `${item.icon} ${item.name} — ${item.blurb}` }],
           feed: [
-            { id: nextId(), icon: item.icon, text: `${item.name} purchased`, detail: `+${item.blocks} blocks for ${item.price.toLocaleString()} $BLOCKVILLE` },
+            { id: nextId(), icon: item.icon, text: `${item.name} purchased`, detail: item.blurb },
             ...s.feed,
           ].slice(0, 8),
+        };
+      }
+      if (item.townDecor) {
+        return {
+          ...base,
+          townDecorInventory: { ...s.townDecorInventory, [item.townDecor]: (s.townDecorInventory[item.townDecor] || 0) + 1 },
+          toasts: [...s.toasts, { id: nextId(), text: `${item.icon} ${item.name} added to your Town Details inventory` }],
+          feed: [{ id: nextId(), icon: item.icon, text: `${item.name} purchased`, detail: 'Stored in your Town Details inventory' }, ...s.feed].slice(0, 8),
         };
       }
       if (item.kind === 'garden') {
@@ -464,6 +660,18 @@ function reducer(s: State, a: Action): State {
           ].slice(0, 8),
         };
       }
+      if (item.design) {
+        if (s.unlockedDesigns.includes(item.design)) return s;
+        return {
+          ...base,
+          unlockedDesigns: [...s.unlockedDesigns, item.design],
+          toasts: [...s.toasts, { id: nextId(), text: `${item.icon} ${item.name} unlocked — customise your resident!` }],
+          feed: [
+            { id: nextId(), icon: item.icon, text: `${item.name} unlocked`, detail: `Equip it in the character customiser` },
+            ...s.feed,
+          ].slice(0, 8),
+        };
+      }
       const hat = item.cosmetic!;
       if (s.unlockedHats.includes(hat)) return s;
       return {
@@ -480,10 +688,14 @@ function reducer(s: State, a: Action): State {
       const plot = s.plots.find((p) => p.id === a.plot);
       if (!plot || !plot.done || plot.owner !== 'you') return s;
       if (s.gardens.includes(a.plot) || s.gardenKits <= 0) return s;
+      const placedHere = s.plotDecor[a.plot] || [];
+      const slot = allocateSlot(plot.type, placedHere, 'garden');
+      if (!slot) return { ...s, toasts: [...s.toasts, { id: nextId(), text: 'No room left in this yard for a garden bed' }] };
       return {
         ...s,
         gardenKits: s.gardenKits - 1,
         gardens: [...s.gardens, a.plot],
+        plotDecor: { ...s.plotDecor, [a.plot]: [...placedHere, { id: `${a.plot}-garden-${nextId()}`, kind: 'garden', ...slot }] },
         toasts: [...s.toasts, { id: nextId(), text: `🌷 Garden placed — ×${CONFIG.garden.boost} fee yield on Plot ${a.plot + 1}` }],
         feed: [
           { id: nextId(), icon: '🌷', text: 'Garden placed', detail: `Plot ${a.plot + 1} now earns ×${CONFIG.garden.boost} fees` },
@@ -491,8 +703,37 @@ function reducer(s: State, a: Action): State {
         ].slice(0, 8),
       };
     }
+    case 'placeDecor': {
+      const plot = s.plots.find((p) => p.id === a.plot);
+      if (!plot || !plot.done || plot.owner !== 'you' || (s.townDecorInventory[a.kind] || 0) < 1) return s;
+      const placedHere = s.plotDecor[a.plot] || [];
+      const slot = allocateSlot(plot.type, placedHere, a.kind);
+      if (!slot) return { ...s, toasts: [...s.toasts, { id: nextId(), text: `No room left in this yard for a ${DECOR_LABEL[a.kind].toLowerCase()}` }] };
+      return {
+        ...s,
+        townDecorInventory: { ...s.townDecorInventory, [a.kind]: (s.townDecorInventory[a.kind] || 0) - 1 },
+        plotDecor: { ...s.plotDecor, [a.plot]: [...placedHere, { id: `${a.plot}-${a.kind}-${nextId()}`, kind: a.kind, ...slot }] },
+        toasts: [...s.toasts, { id: nextId(), text: `${DECOR_LABEL[a.kind]} placed on Plot ${a.plot + 1}` }],
+      };
+    }
+    case 'removeDecor': {
+      const plot = s.plots.find((p) => p.id === a.plot);
+      const found = (s.plotDecor[a.plot] || []).find((f) => f.id === a.id);
+      if (!plot || plot.owner !== 'you' || !found || found.kind === 'garden') return s;
+      return {
+        ...s,
+        townDecorInventory: { ...s.townDecorInventory, [found.kind]: (s.townDecorInventory[found.kind] || 0) + 1 },
+        plotDecor: { ...s.plotDecor, [a.plot]: s.plotDecor[a.plot].filter((f) => f.id !== a.id) },
+      };
+    }
     case 'setLook':
       return { ...s, look: a.look };
+    case 'setName': {
+      // multiplayer identity — trimmed, capped at 12 chars, persisted
+      const clean = a.name.replace(/[\u0000-\u001f\u007f]/g, '').trim().slice(0, 12);
+      try { localStorage.setItem('blockville_name', clean); } catch { /* private mode */ }
+      return { ...s, name: clean };
+    }
     case 'setStoreOpen':
       return { ...s, storeOpen: a.open, selectedPlot: a.open ? null : s.selectedPlot };
     case 'setCustomiseOpen':
@@ -572,8 +813,6 @@ function reducer(s: State, a: Action): State {
       return { ...s, feed: [{ id: nextId(), icon: a.icon, text: a.text, detail: a.detail }, ...s.feed].slice(0, 8) };
     case 'toast':
       return { ...s, toasts: [...s.toasts, { id: nextId(), text: a.text }] };
-    case 'toastGone':
-      return { ...s, toasts: s.toasts.filter((t) => t.id !== a.id) };
   }
 }
 
@@ -582,8 +821,9 @@ export interface EngineApi {
   sync: (plots: Plot[], npcTarget: number) => void;
   setLook: (look: PlayerLook) => void;
   setInputEnabled: (v: boolean) => void;
-  playerPos: () => { x: number; z: number };
-  placeGardenVisual: (plotId: number) => void;
+  playerPos: () => { x: number; z: number; ry: number };
+  setInterior: (plot: number | null, paint: string, placements: Array<{ id: string; itemId: string; x: number; z: number; rotation: number }>) => void;
+  setPlotDecor: (plotId: number, features: PlacedFeature[]) => void;
   dispose: () => void;
 }
 
@@ -604,11 +844,30 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
   stateRef.current = state;
   // debug mirror for automated playtests (dev only)
   if (import.meta.env.DEV) (window as any).__bvState = state;
+  if (import.meta.env.DEV) (window as any).__bvDispatch = dispatch;
+
+  // Persist the demo staking ledger so normal reloads do not reset stake or instant rewards already credited.
+  useEffect(() => {
+    try {
+      localStorage.setItem('blockville_staking', JSON.stringify({
+        builder: state.builder,
+        balance: state.balance,
+        staked: state.staked,
+        blocks: state.blocks,
+      }));
+    } catch { /* private mode or unavailable storage */ }
+    try {
+      localStorage.setItem('blockville_store_progress', JSON.stringify({
+        unlockedHats: state.unlockedHats, unlockedGlasses: state.unlockedGlasses,
+        unlockedDesigns: state.unlockedDesigns, townDecorInventory: state.townDecorInventory,
+        permit: state.permit,
+      }));
+    } catch { /* private mode or unavailable storage */ }
+  }, [state.builder, state.balance, state.staked, state.blocks, state.unlockedHats, state.unlockedGlasses, state.unlockedDesigns, state.townDecorInventory, state.permit]);
 
   // Marketplace heartbeat: residents slowly claim free Wave-1 land, list
   // their own plots for sale, and buy listings — occasionally yours.
   useEffect(() => {
-    const RESIDENTS = ['Nova', 'Rex', 'Momo', 'Vega', 'Juno', 'Pixel'];
     const TYPES = Object.keys(BUILDING_DEFS) as BuildingType[];
     const m = CONFIG.market;
     const iv = setInterval(() => {
@@ -618,7 +877,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
         if (free.length) {
           const pick = free[Math.floor(Math.random() * free.length)];
           const type = TYPES[Math.floor(Math.random() * TYPES.length)];
-          dispatch({ t: 'simClaim', plot: pick.id, type });
+          dispatch({ t: 'simClaim', plot: pick.id, type, name: RESIDENTS[Math.floor(Math.random() * RESIDENTS.length)] });
         }
       }
       if (Math.random() < m.simListChance && s.listings.length < m.maxOpenListings) {
@@ -745,11 +1004,16 @@ export function useEngineBridge() {
   return v;
 }
 
-export function useToastTimer() {
+// Personal messages now persist in the bottom-left log — nothing auto-expires.
+// This hook only raises the unread badge when a personal message arrives while
+// the user isn't looking at the PERSONAL tab.
+export function usePersonalUnread() {
   const { state, dispatch } = useGame();
+  const prev = useRef(state.toasts.length);
   useEffect(() => {
-    if (state.toasts.length === 0) return;
-    const id = setTimeout(() => dispatch({ t: 'toastGone', id: state.toasts[0].id }), 3200);
-    return () => clearTimeout(id);
-  }, [state.toasts, dispatch]);
+    if (state.toasts.length > prev.current && !(state.logOpen && state.logTab === 'personal')) {
+      dispatch({ t: 'logUnread' });
+    }
+    prev.current = state.toasts.length;
+  }, [state.toasts.length, state.logOpen, state.logTab, dispatch]);
 }

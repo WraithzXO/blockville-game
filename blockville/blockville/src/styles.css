@@ -39,7 +39,7 @@ body {
 
 .app { position: relative; width: 100%; height: 100%; }
 .game-canvas { position: absolute; inset: 0; }
-.game-canvas canvas { display: block; }
+.game-canvas canvas { display: block; width: 100%; height: 100%; }
 
 /* ── shared surfaces ─────────────────────────────────────────────────── */
 .panel {
@@ -199,9 +199,14 @@ body {
 
 /* ── bottom dock panels (claim menu / store) ─────────────────────────── */
 .dock {
-  position: absolute; bottom: 18px; left: 50%; transform: translateX(-50%);
+  position: absolute; bottom: 18px; left: 50%;
+  translate: -50% 0;
   width: min(680px, 94vw); z-index: 20; padding: 14px;
+  max-height: calc(100vh - 36px); overflow-y: auto;
 }
+.dock .panel-head { position: sticky; top: -14px; z-index: 1;
+  background: rgba(15, 21, 28, 0.96); margin: -2px -2px 0; padding: 6px 6px;
+  border-radius: var(--r-sm); }
 .dock.wide { width: min(760px, 94vw); }
 .dock-note { margin-top: 4px; font-size: 12px; color: #ffd88a; line-height: 1.5; }
 .dock-note.subtle { color: var(--muted); margin: 0 0 10px; }
@@ -214,15 +219,30 @@ body {
 /* ── pre-stake store dock (non-blocking, bottom-left) ─────────────────── */
 .stake-dock {
   left: 16px; right: auto; transform: none; bottom: 18px;
+  translate: 0 0;
   width: min(340px, 92vw); z-index: 15; animation: rise 0.22s cubic-bezier(0.2, 0.9, 0.3, 1.2);
 }
 .stake-dock .stake-body { display: flex; flex-direction: column; gap: 9px; margin-top: 8px; }
 .stake-dock .field-row { margin-top: 2px; }
 .stake-dock .slider { width: 100%; }
+.stake-summary {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  padding: 8px;
+  border: 1px solid rgba(242, 179, 78, 0.24);
+  border-radius: var(--r-sm);
+  background: rgba(0, 0, 0, 0.18);
+  font-size: 11px;
+}
+.stake-summary div { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.stake-summary span { color: var(--faint); }
+.stake-summary b { color: var(--text); font-variant-numeric: tabular-nums; }
 
 /* ── E-to-interact prompt ─────────────────────────────────────────────── */
 .interact-prompt {
-  position: absolute; bottom: 96px; left: 50%; transform: translateX(-50%);
+  position: absolute; bottom: 118px; left: 50%;
+  translate: -50% 0;
   z-index: 18; display: flex; align-items: center; gap: 8px;
   background: var(--glass-strong); border: 1px solid rgba(242, 179, 78, 0.45);
   border-radius: 10px; padding: 8px 14px; font-size: 12.5px; font-weight: 700; color: var(--text);
@@ -238,7 +258,8 @@ body {
 
 /* ── first-run walk hint ──────────────────────────────────────────────── */
 .walk-hint {
-  position: absolute; bottom: 18px; left: 50%; transform: translateX(-50%);
+  position: absolute; bottom: 18px; left: 50%;
+  translate: -50% 0;
   z-index: 18; display: flex; align-items: center; gap: 6px;
   background: var(--glass-strong); border: 1px solid var(--line);
   border-radius: 10px; padding: 8px 14px; font-size: 12px; font-weight: 600; color: var(--muted);
@@ -323,13 +344,13 @@ body {
 /* staking fields */
 .field-row { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
 .field-row input {
-  flex: 1; font-size: 20px; font-weight: 800; padding: 10px 12px;
+  flex: 1; min-width: 0; font-size: 20px; font-weight: 800; padding: 10px 12px;
   border: 1px solid var(--line-strong); border-radius: var(--r-sm);
   background: rgba(0, 0, 0, 0.3); color: #fff; font-family: var(--ui-font);
   font-variant-numeric: tabular-nums; outline: none; transition: border-color 0.15s;
 }
 .field-row input:focus { border-color: rgba(242, 179, 78, 0.6); }
-.token { font-weight: 800; font-size: 13px; color: var(--gold); }
+.token { font-weight: 800; font-size: 13px; color: var(--gold); flex: none; white-space: nowrap; }
 .hint-row {
   display: flex; justify-content: space-between; font-size: 11px; color: var(--faint);
   margin-bottom: 8px; font-variant-numeric: tabular-nums;
@@ -360,7 +381,8 @@ body {
 
 /* ── build hud ───────────────────────────────────────────────────────── */
 .build-hud {
-  position: absolute; bottom: 18px; left: 50%; transform: translateX(-50%);
+  position: absolute; bottom: 18px; left: 50%;
+  translate: -50% 0;
   width: min(480px, 92vw); z-index: 20; cursor: pointer; padding: 13px 15px;
   transition: border-color 0.15s;
 }
@@ -377,36 +399,49 @@ body {
 }
 .build-sub { margin-top: 7px; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
 
-/* ── feed ────────────────────────────────────────────────────────────── */
-.feed {
-  position: absolute; left: 16px; bottom: 18px; width: 280px; z-index: 10;
-  padding: 12px 13px;
+/* ── activity log (bottom-left, TOWN / PERSONAL) ─────────────────────── */
+.activity-log {
+  position: absolute; left: 16px; bottom: 18px; width: 238px; z-index: 10;
+  padding: 8.5px 11px 10px;
 }
-.feed-title {
-  font-size: 9.5px; font-weight: 800; letter-spacing: 1.8px; color: var(--faint);
-  margin-bottom: 8px;
+.activity-log.expanded { max-height: 42vh; display: flex; flex-direction: column; }
+.log-tabs {
+  display: flex; align-items: center; justify-content: space-between; width: 100%;
+  background: none; border: none; padding: 0; cursor: pointer;
 }
-.feed-item { display: flex; gap: 8px; padding: 6px 0; border-top: 1px solid rgba(255, 255, 255, 0.06); }
+.log-title {
+  font-size: 8px; font-weight: 800; letter-spacing: 1.5px; color: var(--faint);
+}
+.log-chevron { font-size: 8.5px; color: var(--faint); }
+.log-tabs-row { display: flex; gap: 5px; margin: 6px 0 3px; }
+.log-tab {
+  position: relative; flex: 1; cursor: pointer;
+  font-size: 7.7px; font-weight: 800; letter-spacing: 1.2px; color: var(--faint);
+  background: rgba(255, 255, 255, 0.04); border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 6px; padding: 4px 0;
+}
+.log-tab.active {
+  color: #ffd9a0; border-color: rgba(242, 179, 78, 0.45);
+  background: rgba(242, 179, 78, 0.12);
+}
+.log-dot {
+  position: absolute; top: 4px; right: 5px; width: 6px; height: 6px;
+  border-radius: 50%; background: #ff6b4a; box-shadow: 0 0 4px rgba(255, 107, 74, 0.9);
+}
+.log-body { overflow-y: auto; }
+.log-more { padding-top: 5px; font-size: 8px; color: var(--faint); text-align: center; }
+.feed-item { display: flex; gap: 7px; padding: 5px 0; border-top: 1px solid rgba(255, 255, 255, 0.06); }
 .feed-item:first-of-type { border-top: none; }
-.feed-icon { font-size: 14px; }
-.feed-item b { display: block; font-size: 11.5px; line-height: 1.3; font-weight: 700; }
-.feed-item small { display: block; font-size: 10.5px; color: var(--muted); line-height: 1.35; }
+.feed-icon { font-size: 12px; }
+.feed-item b { display: block; font-size: 9.8px; line-height: 1.3; font-weight: 700; }
+.feed-item small { display: block; font-size: 9px; color: var(--muted); line-height: 1.35; }
+
+/* ── toasts (removed — personal messages now live in the activity log) ─ */
 
 /* ── toasts ──────────────────────────────────────────────────────────── */
-.toasts {
-  position: absolute; top: 84px; left: 50%; transform: translateX(-50%);
-  z-index: 30; display: flex; flex-direction: column; gap: 8px; pointer-events: none;
-  align-items: center;
-}
-.toast {
-  background: var(--glass-strong); color: #fff; font-weight: 800; font-size: 13.5px;
-  border: 1px solid rgba(242, 179, 78, 0.55); border-radius: 10px; padding: 10px 18px;
-  box-shadow: var(--shadow); backdrop-filter: blur(10px);
-  animation: toast-in 0.25s cubic-bezier(0.2, 0.9, 0.3, 1.3);
-}
 @keyframes toast-in { from { opacity: 0; transform: translateY(-8px) scale(0.92); } to { opacity: 1; transform: none; } }
 @keyframes fade { from { opacity: 0; } to { opacity: 1; } }
-@keyframes rise { from { opacity: 0; transform: translateX(-50%) translateY(10px); } to { opacity: 1; transform: translateX(-50%); } }
+@keyframes rise { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
 .modal, .backdrop .modal { animation-name: modal-rise; }
 @keyframes modal-rise { from { opacity: 0; transform: translateY(12px) scale(0.97); } to { opacity: 1; transform: none; } }
 
@@ -503,7 +538,7 @@ body {
 }
 @media (max-width: 720px) {
   .cards.four { grid-template-columns: repeat(2, 1fr); }
-  .feed { width: 220px; }
+  .activity-log { width: 220px; }
   .pills { flex-wrap: wrap; justify-content: flex-end; }
 }
 
@@ -545,3 +580,193 @@ body {
 .build-hud.far { opacity: 0.55; cursor: default; }
 .build-hud.far:hover { border-color: rgba(255, 255, 255, 0.14); }
 .build-hud.far .build-title { color: rgba(255, 255, 255, 0.75); }
+
+/* ── town noticeboard panel ───────────────────────────────────────────── */
+.notice-panel { max-width: 560px; }
+.notice-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin-top: 4px; }
+.notice-cols h4 { margin: 0 0 8px; font-size: 13px; letter-spacing: 0.04em; text-transform: uppercase; color: var(--gold, #e8c56a); }
+.notice-cols ul { margin: 0; padding-left: 18px; display: grid; gap: 6px; font-size: 13.5px; line-height: 1.45; color: rgba(255, 255, 255, 0.86); }
+.notice-note { margin: 14px 0 0; font-size: 12px; color: rgba(255, 255, 255, 0.5); }
+.notice-wrap { display: grid; gap: 4px; }
+
+/* narrow screens: keep the walk hint clear of the bottom-left stake dock */
+@media (max-width: 620px) {
+  .walk-hint { bottom: auto; top: 112px; }
+}
+
+
+/* final UI polish: stronger building cards, store grouping, and customiser hierarchy */
+.building-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+.building-card { min-height: 190px; text-align: left; position: relative; overflow: hidden; padding: 0 10px 11px; }
+.building-card::after { content: ''; position: absolute; inset: 0; pointer-events: none; opacity: .55; background: linear-gradient(145deg, rgba(255,255,255,.08), transparent 45%); }
+.building-preview { height: 70px; margin: -1px -10px 9px; display: grid; place-items: center; position: relative; overflow: hidden; background: linear-gradient(160deg, color-mix(in srgb, var(--building-tint) 45%, #15202b), #111820 78%); border-bottom: 1px solid rgba(255,255,255,.14); }
+.building-preview::before, .building-preview::after { content: ''; position: absolute; bottom: 10px; width: 26px; height: 21px; border: 2px solid rgba(255,255,255,.28); border-bottom-width: 3px; background: rgba(8,12,18,.5); }
+.building-preview::before { left: 24%; } .building-preview::after { right: 24%; }
+.building-preview-icon { position: relative; z-index: 1; font-size: 31px; filter: drop-shadow(0 3px 3px rgba(0,0,0,.35)); }
+.building-preview-lights { position: absolute; width: 42%; height: 5px; top: 14px; border-radius: 5px; background: var(--building-tint); box-shadow: 0 0 14px var(--building-tint); opacity: .8; }
+.building-casino { --building-tint: #e0b64a; } .building-mine { --building-tint: #5ad1e6; } .building-shop { --building-tint: #e8874a; } .building-bank { --building-tint: #8fd18f; }
+.building-cafe { --building-tint: #e69a72; } .building-arcade { --building-tint: #b38cff; } .building-bakery { --building-tint: #f0c97d; } .building-park { --building-tint: #70d68c; }
+.card-action { color: var(--gold); font-weight: 900; white-space: nowrap; }
+.building-card .card-blurb { min-height: 36px; }
+.store-sections { display: grid; gap: 18px; }
+.store-section { padding-top: 3px; }
+.store-section + .store-section { border-top: 1px solid rgba(255,255,255,.09); padding-top: 15px; }
+.store-section-head { display: flex; justify-content: space-between; gap: 12px; align-items: end; margin-bottom: 9px; }
+.store-section-head h3 { color: #fff3d0; font: 800 15px var(--display-font); letter-spacing: .02em; }
+.store-section-head p { color: var(--muted); font-size: 11px; margin-top: 2px; }
+.store-section-head > span { color: var(--gold); font-size: 10px; font-weight: 900; text-transform: uppercase; letter-spacing: .08em; white-space: nowrap; }
+.store-icon { width: 48px; height: 48px; display: grid; place-items: center; margin: 0 auto 5px; border-radius: 14px; background: rgba(242,179,78,.10); border: 1px solid rgba(242,179,78,.18); }
+.customise-section { padding: 10px 0 2px; border-top: 1px solid rgba(255,255,255,.08); }
+.customise-section:first-of-type { border-top: 0; }
+.row-label { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.row-label span { color: var(--faint); font-size: 10px; font-weight: 600; letter-spacing: 0; text-transform: none; }
+@media (max-width: 760px) { .building-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .store-section-head { align-items: start; } .row-label { align-items: flex-start; flex-direction: column; gap: 2px; } }
+
+
+/* Complete build: readable House and furniture presentation */
+.btn.secondary { background: #3d6c78; color: #fff8df; border-color: #85c8c2; }
+.furniture-cards { margin-top: 10px; }
+.furniture-swatch { min-height: 58px; display: grid; place-items: center; border-radius: 8px; font-size: 2rem; border: 2px solid rgba(255,255,255,.25); }
+.house-interior-overlay { position: fixed; inset: 0; z-index: 30; display: grid; place-items: center; padding: 24px; background: rgba(22,18,27,.78); }
+.house-interior-shell { width: min(980px, 96vw); max-height: 94vh; overflow: auto; background: #f6e8c8; color: #33271f; border: 4px solid #6b4938; box-shadow: 0 14px 0 #30201b; padding: 18px; }
+.house-interior-head { display:flex; justify-content:space-between; align-items:flex-start; gap:16px; border-bottom:2px solid #cda873; padding-bottom:12px; }
+.house-interior-head h2 { margin: 3px 0; font-size: 1.8rem; }
+.house-interior-head p { margin: 0; color:#765d49; }
+.house-room { position:relative; height: min(52vh, 470px); min-height:300px; margin:18px 0; overflow:hidden; background: linear-gradient(#cda47a 0 18%, #ead5ad 18% 100%); border: 4px solid #7c553e; box-shadow: inset 0 -70px 0 #a86e4a; }
+.room-wall { position:absolute; inset:0 0 auto; height:18%; background: repeating-linear-gradient(90deg,#f3d7a3 0 42px,#e8c58e 42px 45px); }
+.room-window { position:absolute; top:9%; left:12%; width:125px; height:100px; background:#82c4d3; border:10px solid #704a38; box-shadow: inset 0 0 0 4px #f0d49a; }
+.room-door { position:absolute; right:7%; bottom:0; width:85px; height:175px; background:#684433; border:8px solid #4b3429; }
+.room-empty { position:absolute; inset:42% 0 auto; text-align:center; color:#765d49; font-weight:700; }
+.room-furniture { position:absolute; min-width:72px; min-height:48px; padding:8px; border:3px solid #4e392c; border-radius:7px; display:grid; place-items:center; font-size:1.7rem; box-shadow:0 5px 0 rgba(57,36,24,.35); }
+.room-furniture small { display:block; font-size:.58rem; white-space:nowrap; }
+.room-actions { position:absolute; top:-14px; right:-14px; display:flex; gap:2px; }
+.room-actions button { border:2px solid #56392d; background:#fff1c8; border-radius:50%; width:23px; height:23px; cursor:pointer; }
+.interior-toolbar { display:flex; align-items:center; gap:8px; flex-wrap:wrap; padding:12px; background:#ead1a4; border:2px solid #b98a58; }
+.interior-toolbar strong { margin-right:6px; }
+.name-gate { position: fixed; inset: 0; z-index: 50; display: grid; place-items: center; background: radial-gradient(circle at 50% 25%, rgba(255,246,212,.12), transparent 45%), #18252d; color: #fff6dd; }
+.name-card { width: min(420px, calc(100vw - 32px)); padding: 30px; text-align: left; box-shadow: 0 18px 70px rgba(0,0,0,.32); }
+.name-brand { display: flex; align-items: center; gap: 9px; color: #ffd66b; font-weight: 900; letter-spacing: .12em; font-size: 15px; }
+.name-card .eyebrow { margin: 34px 0 6px; color: #87d9b0; font-size: 11px; font-weight: 900; letter-spacing: .15em; }
+.name-card h1 { margin: 0; font-size: 30px; line-height: 1.05; }
+.name-copy { color: #d4d0c1; line-height: 1.5; margin: 12px 0 24px; }
+.name-card label { display: block; color: #fff6dd; font-weight: 800; font-size: 12px; margin-bottom: 7px; }
+.name-card input { width: 100%; box-sizing: border-box; border: 2px solid #53616a; border-radius: 8px; background: #102027; color: #fff6dd; padding: 12px 13px; font: inherit; outline: none; }
+.name-card input:focus { border-color: #ffd66b; box-shadow: 0 0 0 3px rgba(255,214,107,.15); }
+.name-meta { display: flex; justify-content: space-between; color: #91a4a9; font-size: 11px; margin: 7px 1px 16px; }
+.name-submit { width: 100%; justify-content: center; }
+
+
+.reward-claim { margin: 0 12px 12px; width: calc(100% - 24px); }
+
+
+/* arcade reaction game */
+.arcade-panel { display: grid; gap: 14px; }
+.arcade-head { display:flex; justify-content:space-between; gap:18px; align-items:start; }
+.arcade-head h3 { margin:2px 0 5px; color:#fff3d0; font:800 22px var(--display-font); }
+.arcade-head p { color:var(--muted); max-width:520px; }
+.arcade-score { min-width:120px; text-align:right; color:var(--gold); }
+.arcade-score span { display:block; font-size:10px; letter-spacing:.12em; font-weight:900; }
+.arcade-score strong { display:block; font:900 28px var(--display-font); color:#fff3d0; }
+.arcade-screen { position:relative; min-height:290px; overflow:hidden; border:2px solid rgba(242,179,78,.28); border-radius:16px; background:radial-gradient(circle at 50% 40%, #283e58, #101925 70%); box-shadow:inset 0 0 40px rgba(0,0,0,.35); }
+.arcade-screen-copy { position:absolute; inset:0; display:grid; place-content:center; text-align:center; gap:6px; color:#fff3d0; }
+.arcade-screen-copy b { font:900 25px var(--display-font); letter-spacing:.05em; }
+.arcade-screen-copy span,.arcade-screen-copy small { color:var(--muted); }
+.reaction-target { position:absolute; transform:translate(-50%,-50%); width:54px; height:54px; border:2px solid #ffe29b; border-radius:50%; background:#e6a63e; color:#fff7d8; font-size:26px; cursor:crosshair; box-shadow:0 0 0 7px rgba(230,166,62,.2),0 0 28px rgba(255,205,96,.75); animation:target-pulse .75s ease-in-out infinite alternate; }
+.arcade-footer { display:flex; align-items:center; justify-content:space-between; color:var(--muted); font-size:11px; font-weight:800; letter-spacing:.08em; }
+@keyframes target-pulse { from { transform:translate(-50%,-50%) scale(.92); } to { transform:translate(-50%,-50%) scale(1.08); } }
+
+
+/* arcade reaction game */
+.arcade-panel { display: grid; gap: 14px; }
+.arcade-head { display:flex; justify-content:space-between; gap:18px; align-items:start; }
+.arcade-head h3 { margin:2px 0 5px; color:#fff3d0; font:800 22px var(--display-font); }
+.arcade-head p { color:var(--muted); max-width:520px; }
+.arcade-score { min-width:120px; text-align:right; color:var(--gold); }
+.arcade-score span { display:block; font-size:10px; letter-spacing:.12em; font-weight:900; }
+.arcade-score strong { display:block; font:900 28px var(--display-font); color:#fff3d0; }
+.arcade-screen { position:relative; min-height:290px; overflow:hidden; border:2px solid rgba(242,179,78,.28); border-radius:16px; background:radial-gradient(circle at 50% 40%, #283e58, #101925 70%); box-shadow:inset 0 0 40px rgba(0,0,0,.35); }
+.arcade-screen-copy { position:absolute; inset:0; display:grid; place-content:center; text-align:center; gap:6px; color:#fff3d0; }
+.arcade-screen-copy b { font:900 25px var(--display-font); letter-spacing:.05em; }
+.arcade-screen-copy span,.arcade-screen-copy small { color:var(--muted); }
+.reaction-target { position:absolute; transform:translate(-50%,-50%); width:54px; height:54px; border:2px solid #ffe29b; border-radius:50%; background:#e6a63e; color:#fff7d8; font-size:26px; cursor:crosshair; box-shadow:0 0 0 7px rgba(230,166,62,.2),0 0 28px rgba(255,205,96,.75); animation:target-pulse .75s ease-in-out infinite alternate; }
+.arcade-footer { display:flex; align-items:center; justify-content:space-between; color:var(--muted); font-size:11px; font-weight:800; letter-spacing:.08em; }
+@keyframes target-pulse { from { transform:translate(-50%,-50%) scale(.92); } to { transform:translate(-50%,-50%) scale(1.08); } }
+
+.arcade-leaderboard{display:grid;gap:7px;padding:12px 14px;border:1px solid rgba(242,179,78,.2);border-radius:12px;background:rgba(9,15,24,.45)}.arcade-score-row{display:flex;justify-content:space-between;color:#fff3d0;font-size:12px}.arcade-score-row strong{color:var(--gold)}
+
+/* 3D House mode HUD: the room itself is rendered by Three.js; this only carries controls. */
+.house-3d-hud { position: fixed; inset: 0; pointer-events: none; z-index: 30; }
+.house-3d-card { pointer-events: auto; position: absolute; left: 24px; top: 132px; display: flex; align-items: center; gap: 18px; max-width: min(720px, calc(100vw - 48px)); padding: 12px 14px; border: 1px solid rgba(255,226,151,.55); border-radius: 12px; background: rgba(24,18,18,.88); color: #fff6dd; box-shadow: 0 10px 28px rgba(0,0,0,.28); }
+.house-3d-card strong { display: block; font-size: 16px; margin-top: 2px; }
+.house-3d-card small { display: block; color: #d8cbb4; margin-top: 3px; }
+.house-paint-controls { display: flex; align-items: center; gap: 7px; font-size: 11px; color: #eadfca; }
+.paint-dot { width: 22px; height: 22px; border: 2px solid rgba(255,255,255,.45); border-radius: 50%; cursor: pointer; padding: 0; box-shadow: 0 0 0 2px transparent; }
+.paint-dot.active { box-shadow: 0 0 0 2px #ffd66b; border-color: #fff; }
+@media (max-width: 720px) { .house-3d-card { left: 12px; right: 12px; top: 118px; gap: 10px; flex-wrap: wrap; } }
+
+/* House controls are a dedicated scrollable rail, below the top/staking HUD. */
+.house-3d-card { max-height: calc(100vh - 156px); overflow-y: auto; align-items: flex-start; }
+.house-furniture-controls, .house-placed-list { display: grid; gap: 6px; min-width: 180px; }
+.house-inventory, .house-piece-row { display: grid; gap: 5px; }
+.house-piece-row { padding-top: 5px; border-top: 1px solid rgba(255,255,255,.12); }
+.house-piece-actions { display:flex; flex-wrap:wrap; gap:4px; }
+.house-control-btn { border:1px solid rgba(255,226,151,.35); border-radius:7px; background:rgba(255,255,255,.08); color:#fff6dd; padding:5px 7px; font:700 11px var(--ui-font); cursor:pointer; }
+.house-control-btn:hover:not(:disabled) { background:rgba(242,179,78,.25); }
+.house-control-btn:disabled { opacity:.4; cursor:not-allowed; }
+.house-control-btn.danger { color:#ffb1a7; }
+.house-control-btn.tiny { padding:4px 6px; }
+.house-muted { color:#d8cbb4; font-size:11px; }
+/* Dedicated HUD zones: activity stays bottom-left, staking sits top-right, House controls below the top bar. */
+@media (max-width: 720px) {
+  .house-3d-card { max-height: calc(100vh - 142px); }
+}
+
+/* ── HUD layout zones (final) ──────────────────────────────────────────────
+   top-left    : brand / town stage, demo tag directly beneath it
+   top-right   : wallet pills, then staking rewards (outdoors only)
+   right rail  : House controls (only inside a House; staking hidden there)
+   bottom-left : Town/Personal activity log
+   bottom-centre: interaction prompt, walk hint, build HUD, onboarding dock
+   Bottom-centre items shift right on narrower screens so they never meet the log. */
+.demo-tag { top: 84px; left: 16px; right: auto; max-width: 280px; pointer-events: none; }
+.stake-reward-panel { position: absolute; z-index: 12; left: auto; bottom: auto; right: 16px; top: 100px; max-height: calc(100vh - 220px); overflow-y: auto; }
+.house-3d-card {
+  left: auto; right: 16px; top: 100px; bottom: auto;
+  width: 300px; max-width: calc(100vw - 32px);
+  flex-direction: column; align-items: stretch; gap: 12px;
+  max-height: calc(100vh - 118px); overflow-y: auto;
+}
+.house-paint-controls { flex-wrap: wrap; }
+.activity-log { max-width: calc(100vw - 32px); }
+.activity-log.expanded { max-height: min(42vh, calc(100vh - 140px)); }
+@media (max-width: 1140px) {
+  .build-hud, .interact-prompt, .walk-hint { left: calc(312px + (100vw - 312px) / 2); }
+  .build-hud { width: min(440px, calc(100vw - 340px)); }
+}
+@media (max-width: 720px) {
+  .demo-tag { top: 70px; left: 12px; }
+  .house-3d-card { left: 12px; right: 12px; width: auto; top: 74px; max-height: 45vh; }
+  .activity-log { width: auto; right: 12px; left: 12px; }
+  .build-hud, .interact-prompt, .walk-hint { left: 50%; }
+}
+
+/* ── Polish pass: richer glass panels, gold accent rails, tactile buttons ── */
+.panel, .modal {
+  background: linear-gradient(180deg, rgba(26, 34, 44, 0.9), rgba(13, 18, 25, 0.92));
+  border: 1px solid var(--line-strong);
+  border-top: 2px solid rgba(242, 179, 78, 0.55);
+  box-shadow: var(--shadow), inset 0 1px 0 rgba(255, 255, 255, 0.07);
+  backdrop-filter: blur(8px);
+}
+.panel-head, .modal-head { font-family: var(--display-font); letter-spacing: 0.03em; }
+.btn {
+  transition: transform 0.12s ease, filter 0.12s ease, box-shadow 0.12s ease;
+}
+.btn:hover { transform: translateY(-1px); filter: brightness(1.08); }
+.btn:active { transform: translateY(1px); filter: brightness(0.95); }
+.log-tab { transition: background 0.15s ease, color 0.15s ease; }
+.feed-item { transition: background 0.15s ease; }
+.feed-item:hover { background: rgba(255, 255, 255, 0.04); }
+::-webkit-scrollbar { width: 8px; }
+::-webkit-scrollbar-thumb { background: rgba(242, 179, 78, 0.35); border-radius: 8px; }
+::-webkit-scrollbar-track { background: transparent; }

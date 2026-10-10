@@ -1,12 +1,15 @@
 // ── BLOCKVILLE configuration ──────────────────────────────────────────────
 // Every gameplay number lives here so it can be tuned without touching logic.
 
-export type BuildingType = 'casino' | 'mine' | 'shop' | 'bank' | 'cafe' | 'arcade' | 'bakery' | 'park';
+export type BuildingType = 'house' | 'casino' | 'mine' | 'shop' | 'bank' | 'cafe' | 'arcade' | 'bakery' | 'park';
 
 export const CONFIG = {
   // Staking
   stakeMin: 20_000,          // $BLOCKVILLE needed to become a Builder
-  starterBlocks: 120,        // blocks granted on becoming a Builder
+  stakeReward: {
+    blocksPerStake: 75,
+    stakeUnit: 20_000,
+  },
 
   // Land ("blocks"): up to 5 claimable plots, each requiring 20,000 staked
   plotStakeCost: 20_000,     // stake locked per plot ("block of land")
@@ -55,12 +58,19 @@ export const CONFIG = {
   walkSpeed: 7.5,            // units per second with WASD held
   interactRadius: 10.5,      // how close you must walk to claim / build on a plot
   // Walkable town area: covers every plot, the store and the fence ring.
-  worldRect: { minX: -83, maxX: 83, minZ: -32, maxZ: 172 },
+  worldRect: { minX: -133, maxX: 133, minZ: -82, maxZ: 240 },
   // Decorative fence sits ~1.5 plots outside the outermost plots.
-  fence: { minX: -85, maxX: 85, minZ: -34, maxZ: 174 },
+  fence: { minX: -135, maxX: 135, minZ: -84, maxZ: 242 },
 
   // Garden kit: buy in the Store, place on one of your completed plots.
   garden: { price: 1500, boost: 1.2 },
+
+  // ── useful Store items (permanent personal perks, all demo-side) ──
+  items: {
+    bootsSpeed: 1.3,        // Speed Boots walk multiplier
+    toolkitPerClick: 2,     // Builder's Toolkit: blocks placed per build click
+    permitExtraPlots: 1,    // Claim Permit: extra plots beyond the stake allowance
+  },
 
   // ── building upgrades (demo SOL — real wallet arrives with the backend) ──
   // Index 0 upgrades Level 1 → 2, etc. Level 4 is the max.
@@ -70,15 +80,58 @@ export const CONFIG = {
     maxLevel: 4,
   },
   demoSol: 2,                // demo SOL balance so upgrades are testable
+
+  // ── town life: NPC greetings + small interactive objects ──
+  town: {
+    greetChance: 0.22,          // per-second chance a nearby NPC greets you
+    greetRange: 6,              // how close the resident must be
+    greetNpcCooldown: 25,       // seconds before the same NPC greets again
+    greetGlobalCooldown: 6,     // town-wide spacing so greetings feel special
+    greetTimeSec: 2.2,
+    // 15-minute cooldowns — a mailbox or bin is a once-in-a-while stop, not a farm
+    mailbox: { rewardChance: 0.18, rewardMin: 4, rewardMax: 16, cooldownSec: 900 },
+    trash: { rewardChance: 0.1, rewardMin: 3, rewardMax: 10, cooldownSec: 900 },
+    fountainCooldownSec: 4,
+    interactObjRadius: 3.2,     // how close you must walk to small objects
+  },
+
+  // Town noticeboard (read in-world at the plaza). Update these strings
+  // whenever Blockville ships something new.
+  notice: {
+    recent: [
+      'Wave 1 land is live — the town has grown',
+      'Treasury fee distributions every ~45s',
+      'Garden kits in the Store — ×1.2 yield boost',
+      'The Golden Crown remains unbought…',
+      'Speed Boots & Builder’s Toolkit restocked',
+    ],
+    upcoming: [
+      'Wave 2 land release',
+      'Real wallet staking (demo staking until then)',
+      'New buildings: Cinema, Gym',
+      'Seasonal town events',
+      'Builder leaderboards',
+    ],
+  },
+
+  streetNames: ['Blockville Avenue', 'Market Street', 'Builder’s Road', 'Coin Corner'],
 } as const;
+
+/** Shared proportional staking formula used by the reducer, UI, and tests. */
+export const stakingRewardFor = (amount: number): number => {
+  if (!Number.isFinite(amount) || amount <= 0) return 0;
+  return (amount * CONFIG.stakeReward.blocksPerStake) / CONFIG.stakeReward.stakeUnit;
+};
 
 // ── character customisation ────────────────────────────────────────────────
 export type HatType =
   | 'none' | 'cap' | 'beanie' | 'crown' | 'tophat'
-  | 'party' | 'halo' | 'horns' | 'headphones';
+  | 'party' | 'halo' | 'horns' | 'headphones' | 'cowboy' | 'wizard';
 export type GlassesType = 'none' | 'round' | 'shades' | 'visor';
 export type FaceType = 'smile' | 'grin' | 'chill' | 'wow' | 'wink' | 'cool';
-export type ShirtDesign = 'none' | 'blockville' | 'solana' | 'pumpfun' | 'diamond' | 'bolt';
+export type ShirtDesign =
+  | 'none' | 'blockville' | 'solana' | 'pumpfun' | 'diamond' | 'bolt'
+  | 'moon' | 'whale' | 'ape' | 'brick' | 'sunset';
 
 export interface PlayerLook {
   skin: string;
@@ -136,11 +189,13 @@ export const HATS: { id: HatType; label: string; price: number }[] = [
   { id: 'cap', label: '🧢 Cap', price: 0 },
   { id: 'beanie', label: '🧶 Beanie', price: 0 },
   { id: 'tophat', label: '🎩 Top Hat', price: 750 },     // purchasable in the Store
-  { id: 'crown', label: '👑 Crown', price: 2500 },       // purchasable in the Store
+  { id: 'crown', label: '👑 Golden Crown', price: 100_000 },  // the 100K joke flex
   { id: 'party', label: '🥳 Party Hat', price: 400 },    // purchasable in the Store
   { id: 'headphones', label: '🎧 Headphones', price: 900 },
   { id: 'horns', label: '😈 Mischief Horns', price: 1200 },
   { id: 'halo', label: '😇 Halo', price: 1500 },
+  { id: 'cowboy', label: '🤠 Cowboy Hat', price: 2200 },  // purchasable in the Store
+  { id: 'wizard', label: '🧙 Wizard Hat', price: 3000 },  // purchasable in the Store
 ];
 
 export const GLASSES: { id: GlassesType; label: string; price: number }[] = [
@@ -150,40 +205,62 @@ export const GLASSES: { id: GlassesType; label: string; price: number }[] = [
   { id: 'visor', label: '🥽 Gold Visor', price: 1500 },  // purchasable in the Store
 ];
 
-export const SHIRT_DESIGNS: { id: ShirtDesign; label: string }[] = [
-  { id: 'none', label: 'Plain' },
-  { id: 'blockville', label: '🧱 $BLOCKVILLE' },
-  { id: 'solana', label: '◎ Solana' },
-  { id: 'pumpfun', label: '🐸 Pump.fun' },
-  { id: 'diamond', label: '💎 Diamond Hands' },
-  { id: 'bolt', label: '⚡ Degen Bolt' },
+export const SHIRT_DESIGNS: { id: ShirtDesign; label: string; price: number }[] = [
+  { id: 'none', label: 'Plain', price: 0 },
+  { id: 'blockville', label: '🧱 $BLOCKVILLE', price: 0 },
+  { id: 'solana', label: '◎ Solana', price: 0 },
+  { id: 'pumpfun', label: '🐸 Pump.fun', price: 0 },
+  { id: 'diamond', label: '💎 Diamond Hands', price: 0 },
+  { id: 'bolt', label: '⚡ Degen Bolt', price: 0 },
+  { id: 'moon', label: '🌕 To The Moon', price: 1200 },   // purchasable in the Store
+  { id: 'whale', label: '🐋 Whale Mode', price: 1800 },   // purchasable in the Store
+  { id: 'ape', label: '🦍 Ape Together', price: 1800 },   // purchasable in the Store
 ];
 
 // ── store items (purchasable with demo $BLOCKVILLE) ───────────────────────
+export type TownDecorType = 'bench' | 'lamp' | 'planter' | 'mailbox' | 'statue' | 'fence';
+
 export interface StoreItem {
   id: string;
   icon: string;
   name: string;
   blurb: string;
   price: number;
-  kind: 'blocks' | 'cosmetic' | 'garden';
-  blocks?: number;
+  kind: 'useful' | 'cosmetic' | 'garden';
+  useful?: 'boots' | 'toolkit' | 'permit';
   cosmetic?: HatType;
   glasses?: GlassesType;
+  design?: ShirtDesign;
+  townDecor?: TownDecorType;
 }
 
 export const STORE_ITEMS: StoreItem[] = [
-  { id: 'pallet', icon: '🧱', name: 'Brick Pallet', blurb: '+10 building blocks, ready to place', price: 250, kind: 'blocks', blocks: 10 },
-  { id: 'crate', icon: '📦', name: 'Block Crate', blurb: '+25 building blocks at a fair price', price: 500, kind: 'blocks', blocks: 25 },
-  { id: 'bulk', icon: '🚚', name: 'Bulk Delivery', blurb: '+60 building blocks, best value', price: 1000, kind: 'blocks', blocks: 60 },
+  // useful — permanent perks that change how you play
+  { id: 'boots', icon: '🥾', name: 'Speed Boots', blurb: `Stride ${Math.round((CONFIG.items.bootsSpeed - 1) * 100)}% faster around Blockville`, price: 2500, kind: 'useful', useful: 'boots' },
+  { id: 'toolkit', icon: '🧰', name: "Builder's Toolkit", blurb: `Every build click places ${CONFIG.items.toolkitPerClick} blocks instead of one`, price: 3500, kind: 'useful', useful: 'toolkit' },
+  { id: 'permit', icon: '📜', name: 'Claim Permit', blurb: `Unlock ${CONFIG.items.permitExtraPlots} extra plot claim beyond your stake allowance`, price: 150_000, kind: 'useful', useful: 'permit' },
+  // special cosmetics
   { id: 'tophat', icon: '🎩', name: 'Top Hat', blurb: 'Distinguished headwear for your resident', price: 750, kind: 'cosmetic', cosmetic: 'tophat' },
-  { id: 'crown', icon: '👑', name: 'Golden Crown', blurb: 'For true Blockville royalty', price: 2500, kind: 'cosmetic', cosmetic: 'crown' },
+  { id: 'crown', icon: '👑', name: 'Golden Crown', blurb: 'It does absolutely nothing. It just costs 100,000.', price: 100_000, kind: 'cosmetic', cosmetic: 'crown' },
   { id: 'party', icon: '🥳', name: 'Party Hat', blurb: 'Celebrate in style at any building opening', price: 400, kind: 'cosmetic', cosmetic: 'party' },
   { id: 'headphones', icon: '🎧', name: 'Headphones', blurb: 'Crisp beats for strolling the streets', price: 900, kind: 'cosmetic', cosmetic: 'headphones' },
   { id: 'horns', icon: '😈', name: 'Mischief Horns', blurb: 'A little chaos looks good on you', price: 1200, kind: 'cosmetic', cosmetic: 'horns' },
   { id: 'halo', icon: '😇', name: 'Golden Halo', blurb: 'Glow gently above the town', price: 1500, kind: 'cosmetic', cosmetic: 'halo' },
+  { id: 'cowboy', icon: '🤠', name: 'Cowboy Hat', blurb: 'Yeehaw — the frontier of decentralised land', price: 2200, kind: 'cosmetic', cosmetic: 'cowboy' },
+  { id: 'wizard', icon: '🧙', name: 'Wizard Hat', blurb: 'Cast spells (still just walking around)', price: 3000, kind: 'cosmetic', cosmetic: 'wizard' },
   { id: 'shades', icon: '🕶️', name: 'Shades', blurb: 'Cool residents never squint', price: 900, kind: 'cosmetic', glasses: 'shades' },
   { id: 'visor', icon: '🥽', name: 'Gold Visor', blurb: 'Futuristic eyewear, Blockville edition', price: 1500, kind: 'cosmetic', glasses: 'visor' },
+  { id: 'moonshirt', icon: '🌕', name: 'To The Moon Tee', blurb: 'Limited print — for the vertically inclined', price: 1200, kind: 'cosmetic', design: 'moon' },
+  { id: 'whaleshirt', icon: '🐋', name: 'Whale Mode Tee', blurb: 'Big holder energy, printed on cotton', price: 1800, kind: 'cosmetic', design: 'whale' },
+  { id: 'apeshirt', icon: '🦍', name: 'Ape Together Tee', blurb: 'Together strong. Individually also strong.', price: 1800, kind: 'cosmetic', design: 'ape' },
+  { id: 'brickshirt', icon: '🧱', name: 'Brick Builder Jacket', blurb: 'A bold brick-pattern jacket for builders.', price: 2100, kind: 'cosmetic', design: 'brick' },
+  { id: 'sunsetshirt', icon: '🌇', name: 'Sunset Jacket', blurb: 'Warm sunset colours for evening walks.', price: 2400, kind: 'cosmetic', design: 'sunset' },
+  { id: 'bench', icon: '🪑', name: 'Town Bench', blurb: 'A sturdy seat for your plot or town corner.', price: 850, kind: 'garden', townDecor: 'bench' },
+  { id: 'lamp', icon: '🏮', name: 'Street Lamp', blurb: 'A warm little lamp that makes the evening feel lived-in.', price: 1250, kind: 'garden', townDecor: 'lamp' },
+  { id: 'planter', icon: '🪴', name: 'Planter Box', blurb: 'A compact planter for a splash of green.', price: 650, kind: 'garden', townDecor: 'planter' },
+  { id: 'mailbox', icon: '📫', name: 'Mailbox', blurb: 'A cheerful mailbox for your plot entrance.', price: 700, kind: 'garden', townDecor: 'mailbox' },
+  { id: 'statue', icon: '🗿', name: 'Builder Statue', blurb: 'A blocky landmark with real town character.', price: 2200, kind: 'garden', townDecor: 'statue' },
+  { id: 'fence', icon: '🚧', name: 'Yard Fence', blurb: 'A white picket fence around your yard, with an open front gate.', price: 500, kind: 'garden', townDecor: 'fence' },
   {
     id: 'garden',
     icon: '🌷',
@@ -194,8 +271,8 @@ export const STORE_ITEMS: StoreItem[] = [
   },
 ];
 
-export const plotAllowance = (staked: number) =>
-  Math.min(CONFIG.maxPlots, Math.floor(staked / CONFIG.plotStakeCost));
+export const plotAllowance = (staked: number, extraPlots = 0) =>
+  Math.min(CONFIG.maxPlots, Math.floor(staked / CONFIG.plotStakeCost) + extraPlots);
 
 export interface BuildingDef {
   name: string;
@@ -206,7 +283,28 @@ export interface BuildingDef {
   activities: string[];      // chat bubble templates. {n} = random number
 }
 
+export type FurnitureCategory = 'Beds' | 'Chairs' | 'Tables' | 'Rugs' | 'Paintings' | 'Decorations';
+export interface FurnitureDef { id: string; name: string; category: FurnitureCategory; icon: string; price: number; color: string; blurb: string; }
+export const FURNITURE_DEFS: FurnitureDef[] = [
+  { id: 'oak-bed', name: 'Oak Bed', category: 'Beds', icon: '🛏️', price: 3200, color: '#9b6841', blurb: 'A sturdy warm-wood bed.' },
+  { id: 'sky-bed', name: 'Skyline Bed', category: 'Beds', icon: '🛌', price: 5200, color: '#5d83b8', blurb: 'A bright blue statement bed.' },
+  { id: 'block-chair', name: 'Block Chair', category: 'Chairs', icon: '🪑', price: 900, color: '#e0a54b', blurb: 'A cheerful chair for visitors.' },
+  { id: 'velvet-chair', name: 'Velvet Chair', category: 'Chairs', icon: '💺', price: 1500, color: '#9b5a89', blurb: 'Soft and a little fancy.' },
+  { id: 'worktable', name: 'Builder Table', category: 'Tables', icon: '🪵', price: 1800, color: '#8a633d', blurb: 'A practical table for projects.' },
+  { id: 'neon-table', name: 'Neon Table', category: 'Tables', icon: '🔆', price: 2600, color: '#3c9fa4', blurb: 'A glowing town-night centrepiece.' },
+  { id: 'sun-rug', name: 'Sun Rug', category: 'Rugs', icon: '🟡', price: 1100, color: '#d6a73d', blurb: 'Warm colour for the floor.' },
+  { id: 'berry-rug', name: 'Berry Rug', category: 'Rugs', icon: '🟣', price: 1300, color: '#8c507c', blurb: 'A rich patterned rug.' },
+  { id: 'town-painting', name: 'Town Painting', category: 'Paintings', icon: '🖼️', price: 1400, color: '#78a8b8', blurb: 'A little piece of Blockville.' },
+  { id: 'sunset-painting', name: 'Sunset Painting', category: 'Paintings', icon: '🌅', price: 1900, color: '#db7d4c', blurb: 'The town at golden hour.' },
+  { id: 'plant', name: 'Potted Plant', category: 'Decorations', icon: '🪴', price: 700, color: '#5b9c58', blurb: 'A little life for a corner.' },
+  { id: 'trophy', name: 'Builder Trophy', category: 'Decorations', icon: '🏆', price: 2400, color: '#d3aa3e', blurb: 'Show off your best build.' },
+];
+
 export const BUILDING_DEFS: Record<BuildingType, BuildingDef> = {
+  house: {
+    name: 'House', icon: '🏠', blurb: 'Your own welcoming Blockville home.', cost: 48, tint: '#d77b58',
+    activities: ['🏠 Touring a resident home', '🛋️ Making the house feel cosy'],
+  },
   casino: {
     name: 'Casino',
     icon: '🎰',
@@ -349,14 +447,21 @@ const CORE: PlotDef[] = [
   { id: 11, x: 26, z: 26, side: 'south' },
 ];
 
-// Wave-1 expansion: 8 further rows of 11 plots between cross streets.
+// Wave-1 expansion: 9 further rows of 11 plots between cross streets.
+// Spacing was widened (15 x 18 per plot) so every plot has a real front
+// yard and the buildings keep clear of the roads.
 const GRID_ROWS: { z: number; side: 'north' | 'south' }[] = [
-  { z: 42, side: 'north' }, { z: 58, side: 'south' },
-  { z: 74, side: 'north' }, { z: 90, side: 'south' },
-  { z: 106, side: 'north' }, { z: 122, side: 'south' },
-  { z: 138, side: 'north' }, { z: 154, side: 'south' },
+  { z: 45, side: 'south' }, { z: 63, side: 'north' },
+  { z: 81, side: 'south' }, { z: 99, side: 'north' },
+  { z: 117, side: 'south' }, { z: 135, side: 'north' },
+  { z: 153, side: 'south' }, { z: 171, side: 'north' },
+  { z: 189, side: 'south' },
 ];
-const GRID_COLS = [-65, -52, -39, -26, -13, 0, 13, 26, 39, 52, 65];
+const GRID_COLS = [-75, -60, -45, -30, -15, 0, 15, 30, 45, 60, 75];
+// World expansion: three more plot columns east and west of the original grid,
+// plus a north block (two rows) and a south block (two rows) of new land.
+const EXT_COLS = [-120, -105, -90, 90, 105, 120];
+const ALL_COLS = [...EXT_COLS.filter((x) => x < 0), ...GRID_COLS, ...EXT_COLS.filter((x) => x > 0)];
 const GRID: PlotDef[] = GRID_ROWS.flatMap((r, ri) =>
   GRID_COLS.map((x, ci) => ({
     id: CORE.length + ri * GRID_COLS.length + ci,
@@ -366,8 +471,21 @@ const GRID: PlotDef[] = GRID_ROWS.flatMap((r, ri) =>
   })),
 );
 
-export const PLOT_POSITIONS: PlotDef[] = [...CORE, ...GRID];
-export const TOTAL_PLOTS = PLOT_POSITIONS.length;   // 100 in Wave 1
+// Appended after every original plot so existing plot ids (and ownership) never shift.
+const EXT_ROWS: { z: number; side: 'north' | 'south' }[] = [
+  { z: -45, side: 'north' }, { z: -63, side: 'south' }, { z: 207, side: 'north' }, { z: 225, side: 'south' },
+];
+const EXPANSION: PlotDef[] = [];
+{
+  let id = CORE.length + GRID.length;
+  const push = (x: number, z: number, side: 'north' | 'south') => EXPANSION.push({ id: id++, x, z, side });
+  for (const r of EXT_ROWS) for (const x of ALL_COLS) push(x, r.z, r.side);
+  for (const r of GRID_ROWS) for (const x of EXT_COLS) push(x, r.z, r.side);
+  for (const z of [-10, 10, 26]) for (const x of EXT_COLS) push(x, z, z < 0 ? 'north' : 'south');
+}
+
+export const PLOT_POSITIONS: PlotDef[] = [...CORE, ...GRID, ...EXPANSION];
+export const TOTAL_PLOTS = PLOT_POSITIONS.length;   // 111 after the spacing wave
 
 // Plots already owned by residents when the demo starts — the town is not
 // empty, and these seed the marketplace with real second-hand supply.

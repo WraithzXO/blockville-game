@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import * as THREE from 'three';
-import { makeCharacterMesh } from './engine';
+import { makeCharacterMesh } from '../players/CharacterBuilder';
 import type { PlayerLook } from './config';
 
 // Live turntable preview of your resident, rendered with the same mesh the
