@@ -1,0 +1,20 @@
+# dependencies / build output
+node_modules/
+dist/
+
+# secrets — NEVER commit: treasury keypair, env files, any key material
+.env
+.env.*
+*.env
+*.keypair
+treasury-keypair*.json
+*-keypair.json
+id.json
+keys/
+.secrets/
+
+# runtime data: treasury ledgers, cycle records, claimable balances, audits
+data/
+casino/
+bugreports/
+*.jsonl

@@ -1,0 +1,28 @@
+{
+  "name": "blockville",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
+    "server": "node server/index.mjs",
+    "test": "node tests/protocol.spec.mjs && node tests/market.spec.mjs && node tests/blocks.spec.mjs && node tests/placement.spec.mjs && node tests/terrain.spec.mjs && node tests/props.spec.mjs && node tests/upgrade.spec.mjs && node tests/furniture.spec.mjs && node tests/settings.spec.mjs && node tests/bugreport.spec.mjs && node tests/activitylog.spec.mjs && node tests/bubblerange.spec.mjs && node tests/plots.spec.mjs && node tests/fishing.spec.mjs && node tests/fishing-zone.spec.mjs && node tests/tokenomics.spec.mjs && node tests/treasury-fees.spec.mjs && node tests/swap-guard.spec.mjs && node tests/treasury-payout.spec.mjs && node tests/treasury-prelude.spec.mjs && node tests/treasury-report.spec.mjs && node tests/treasury-holdings.spec.mjs && node tests/server-entitlements.spec.mjs && node tests/auth-verify.spec.mjs && node tests/upgradepay.spec.mjs && node tests/upgradepay-ws.spec.mjs && node tests/wallet-lock.spec.mjs && node tests/hud-restructure.spec.mjs && node tests/whitepaper.spec.mjs && node tests/fees-earnings.spec.mjs && node tests/roundtrip.spec.mjs && node tests/fees-card.spec.mjs && node tests/blackjack.spec.mjs && node tests/blackjack-ws.spec.mjs && node tests/remote-build-sync.spec.mjs && node tests/guest-gate.spec.mjs && node tests/guest-ui.spec.mjs",
+    "start": "npm run build && node server/index.mjs"
+  },
+  "dependencies": {
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "three": "^0.170.0",
+    "ws": "^8.22.0"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@types/three": "^0.170.0",
+    "@vitejs/plugin-react": "^4.3.4",
+    "typescript": "~5.6.3",
+    "vite": "^5.4.11"
+  }
+}
