@@ -1,0 +1,11 @@
+process.env.BV_MARKET_TICK_MS = '3600000';
+const { startServer, Client } = await import('./harness.mjs');
+const stop = await startServer();
+const a = new Client(); const b = new Client();
+const spy = (c, label) => c.ws.on('message', (r) => { const m = JSON.parse(String(r)); if (m.t !== 'pos') console.log(label, '<<', String(r).slice(0, 120)); });
+spy(a, 'a'); spy(b, 'b');
+await a.join('A', 0, 0, { plotIds: [6, 7, 4], community: [] });
+await b.join('B');
+a.send({ t: 'claim', plot: 7, ownerName: 'A', type: 'house' });
+await new Promise(r => setTimeout(r, 1000));
+stop?.(); process.exit(0);
